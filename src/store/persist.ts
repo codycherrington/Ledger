@@ -1,4 +1,5 @@
 import type { PersistStorage } from 'zustand/middleware'
+import { useSaveStatusStore } from './saveStatus'
 
 // Bridge exposed by electron/preload.cjs. The app only runs inside Electron;
 // there is no browser storage fallback. For UI development with hot reload,
@@ -33,10 +34,18 @@ export function boardStorage<T>(): PersistStorage<T> {
       return state ? { state: state as T, version: 0 } : null
     },
     setItem: async (_name, value) => {
-      await requireFS().saveState(value.state)
+      const { setSaving, setSaved, setError } = useSaveStatusStore.getState()
+      setSaving()
+      try {
+        await requireFS().saveState(value.state)
+        setSaved()
+      } catch (err) {
+        setError()
+        throw err
+      }
     },
     removeItem: async () => {
-      await requireFS().saveState({ projects: {}, columns: {}, cards: {}, tags: {} })
+      await requireFS().saveState({ projects: {}, columns: {}, cards: {}, tags: {}, folders: {} })
     },
   }
 }
