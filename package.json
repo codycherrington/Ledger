@@ -2,6 +2,8 @@
   "name": "tasktray",
   "private": true,
   "version": "1.0.0",
+  "description": "A local-only Kanban project/task manager for the Mac desktop.",
+  "author": "Cody Cherrington",
   "type": "module",
   "main": "electron/main.cjs",
   "scripts": {
