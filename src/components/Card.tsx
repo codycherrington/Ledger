@@ -1,11 +1,10 @@
-import { useSortable } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
 import { useShallow } from 'zustand/react/shallow'
 import type { Card as CardType } from '../types'
-import { COLOR_CLASSES } from '../lib/colors'
+import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
-import { selectProjectTags, useBoardStore } from '../store/board'
-import { AttachmentIcon, ChecklistIcon, LinkIcon } from './icons'
+import { useSortableItem } from '../lib/useSortableItem'
+import { selectAllTags, useBoardStore } from '../store/board'
+import { AttachmentIcon, ChecklistIcon, InfoIcon, LinkIcon } from './icons'
 
 const PRIORITY_CLASSES: Record<NonNullable<CardType['priority']>, string> = {
   low: 'bg-white/[0.06] text-slate-400',
@@ -20,8 +19,11 @@ const PRIORITY_LABEL: Record<NonNullable<CardType['priority']>, string> = {
 }
 
 export function CardBody({ card }: { card: CardType }) {
-  const tags = useBoardStore(useShallow((s) => selectProjectTags(s, card.projectId)))
+  const tags = useBoardStore(useShallow(selectAllTags))
   const cardTags = tags.filter((t) => card.tagIds.includes(t.id))
+  // Filed tasks aren't rendered in any column, so their status isn't visible
+  // from placement alone — show it as a pill instead.
+  const statusName = useBoardStore((s) => (card.folderId ? s.columns[card.columnId]?.name : undefined))
 
   const checklistTotal = card.checklist.length
   const checklistDone = card.checklist.filter((c) => c.done).length
@@ -30,8 +32,15 @@ export function CardBody({ card }: { card: CardType }) {
     <>
       <p className="text-sm font-medium text-slate-100">{card.title}</p>
 
-      {(card.priority || card.dueDate || cardTags.length > 0) && (
+      {(statusName || card.priority || card.dueDate || cardTags.length > 0) && (
         <div className="mt-2 flex flex-wrap gap-1">
+          {statusName && (
+            <span
+              className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${COLOR_CLASSES[STATUS_COLOR[statusName] ?? 'slate'].bgSoft} ${COLOR_CLASSES[STATUS_COLOR[statusName] ?? 'slate'].text}`}
+            >
+              {statusName}
+            </span>
+          )}
           {card.priority && (
             <span className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${PRIORITY_CLASSES[card.priority]}`}>
               {PRIORITY_LABEL[card.priority]}
@@ -96,16 +105,10 @@ interface CardProps {
 }
 
 export default function Card({ card, onOpen }: CardProps) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
-    id: card.id,
-    data: { type: 'card', columnId: card.columnId },
+  const { attributes, listeners, setNodeRef, style } = useSortableItem(card.id, {
+    columnId: card.columnId,
+    folderId: card.folderId,
   })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.4 : 1,
-  }
 
   return (
     <div
@@ -114,8 +117,21 @@ export default function Card({ card, onOpen }: CardProps) {
       {...attributes}
       {...listeners}
       onClick={() => onOpen(card.id)}
-      className="cursor-grab rounded-xl border border-white/[0.07] bg-raised p-3.5 shadow-sm shadow-black/20 transition hover:border-white/[0.16] active:cursor-grabbing"
+      className="group cursor-grab rounded-xl border border-white/[0.07] bg-raised p-3.5 shadow-sm shadow-black/20 transition hover:border-white/[0.16] active:cursor-grabbing"
     >
+      {/* float (not absolute) so wrapping title text flows around the icon
+          instead of ever being able to sit underneath it */}
+      <button
+        type="button"
+        aria-label="Task details"
+        onClick={(e) => {
+          e.stopPropagation()
+          onOpen(card.id)
+        }}
+        className="icon-btn float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
+      >
+        <InfoIcon className="h-3.5 w-3.5" />
+      </button>
       <CardBody card={card} />
     </div>
   )

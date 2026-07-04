@@ -88,14 +88,23 @@ body {
     opacity: 1;
   }
 }
+/* Only animate opacity/scale here — Modal.tsx centers the dialog with the
+   -translate-x-1/2 -translate-y-1/2 utilities, which Tailwind v4 compiles to
+   the standalone `translate` CSS property (not `transform`). If this keyframe
+   also set `transform: translate(...)`, both would compose together during
+   the animation (translate + transform stack per the CSS Transforms spec),
+   doubling the offset for the animation's duration and causing the dialog to
+   visibly jump from a corner to center once the animation ends and
+   `transform` reverts. Keeping `translate` out of this keyframe entirely
+   avoids that. */
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(0.97);
+    scale: 0.97;
   }
   to {
     opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
+    scale: 1;
   }
 }
 @keyframes pop-in {

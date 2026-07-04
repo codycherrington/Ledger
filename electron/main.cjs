@@ -87,5 +87,7 @@ app.whenReady().then(() => {
 })
 
 app.on('window-all-closed', () => {
-  app.quit()
+  // Standard mac behavior: closing the window leaves the app running in the
+  // dock/menu bar. Only Cmd+Q or "Quit" from the menu should actually quit.
+  if (process.platform !== 'darwin') app.quit()
 })
