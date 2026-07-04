@@ -1,12 +1,10 @@
 import { useState } from 'react'
 import { useDroppable } from '@dnd-kit/core'
-import { SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
-import { CSS } from '@dnd-kit/utilities'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { Column as ColumnType } from '../types'
 import { COLOR_CLASSES } from '../lib/colors'
 import { useBoardStore } from '../store/board'
 import Card from './Card'
-import ColumnEditPopover from './ColumnEditPopover'
 
 interface ColumnProps {
   column: ColumnType
@@ -19,23 +17,8 @@ export default function Column({ column, cards, onOpenCard }: ColumnProps) {
   const [adding, setAdding] = useState(false)
   const [draft, setDraft] = useState('')
 
-  const {
-    attributes,
-    listeners,
-    setNodeRef: setColumnRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: column.id, data: { type: 'column' } })
-
   const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' } })
-
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
+  const isNullspace = column.name === 'NULLSPACE'
   const colorClasses = COLOR_CLASSES[column.color as keyof typeof COLOR_CLASSES] ?? COLOR_CLASSES.slate
 
   function submitDraft() {
@@ -46,23 +29,22 @@ export default function Column({ column, cards, onOpenCard }: ColumnProps) {
 
   return (
     <div
-      ref={setColumnRef}
-      style={style}
-      className="flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-white/[0.05] bg-white/[0.025]"
+      className={
+        isNullspace
+          ? 'flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-dashed border-white/15 bg-white/[0.015]'
+          : 'flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-white/[0.05] bg-white/[0.025]'
+      }
     >
-      <div
-        {...attributes}
-        {...listeners}
-        className="flex cursor-grab items-center justify-between rounded-t-2xl px-3.5 py-3 active:cursor-grabbing"
-      >
+      <div className="flex items-center justify-between rounded-t-2xl px-3.5 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`h-2 w-2 shrink-0 rounded-full ${colorClasses.dot}`} />
-          <span className="truncate text-sm font-semibold text-slate-200">{column.name}</span>
+          <span className={`truncate text-sm font-semibold ${isNullspace ? 'text-slate-500' : 'text-slate-200'}`}>
+            {column.name}
+          </span>
           <span className="rounded-full bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-slate-500">
             {cards.length}
           </span>
         </div>
-        <ColumnEditPopover column={column} cardCount={cards.length} />
       </div>
 
       <div ref={setDroppableRef} className="min-h-2 flex-1 space-y-2 overflow-y-auto px-2.5 pb-2">

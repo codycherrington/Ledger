@@ -77,9 +77,6 @@ export default function Home() {
                   {project.description && (
                     <p className="mt-1.5 line-clamp-2 text-sm text-slate-400">{project.description}</p>
                   )}
-                  <p className="mt-4 text-xs text-slate-500">
-                    {project.columnOrder.length} {project.columnOrder.length === 1 ? 'phase' : 'phases'}
-                  </p>
                 </div>
               ))}
             </div>

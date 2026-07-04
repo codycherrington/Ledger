@@ -12,7 +12,7 @@ import {
   type DragOverEvent,
   type DragStartEvent,
 } from '@dnd-kit/core'
-import { SortableContext, arrayMove, horizontalListSortingStrategy } from '@dnd-kit/sortable'
+import { arrayMove } from '@dnd-kit/sortable'
 import { selectProjectColumns, useBoardStore } from '../store/board'
 import Column from '../components/Column'
 import { CardBody } from '../components/Card'
@@ -27,14 +27,11 @@ export default function Board() {
   const project = useBoardStore((s) => s.projects[projectId])
   const columns = useBoardStore(useShallow((s) => selectProjectColumns(s, projectId)))
   const cardsById = useBoardStore((s) => s.cards)
-  const createColumn = useBoardStore((s) => s.createColumn)
-  const reorderColumns = useBoardStore((s) => s.reorderColumns)
   const moveCard = useBoardStore((s) => s.moveCard)
   const reorderCardsInColumn = useBoardStore((s) => s.reorderCardsInColumn)
 
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [activeCardId, setActiveCardId] = useState<string | null>(null)
-  const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority | null>(null)
   const [tagFilter, setTagFilter] = useState<string[]>([])
@@ -60,9 +57,7 @@ export default function Board() {
   }
 
   function handleDragStart(event: DragStartEvent) {
-    const type = event.active.data.current?.type
-    if (type === 'column') setActiveColumnId(event.active.id as string)
-    else setActiveCardId(event.active.id as string)
+    setActiveCardId(event.active.id as string)
   }
 
   function handleDragOver(event: DragOverEvent) {
@@ -85,21 +80,10 @@ export default function Board() {
   function handleDragEnd(event: DragEndEvent) {
     const { active, over } = event
     setActiveCardId(null)
-    setActiveColumnId(null)
     if (!over) return
     const activeId = active.id as string
     const overId = over.id as string
     if (activeId === overId) return
-
-    if (active.data.current?.type === 'column') {
-      const proj = useBoardStore.getState().projects[projectId]
-      if (!proj) return
-      const oldIndex = proj.columnOrder.indexOf(activeId)
-      const newIndex = proj.columnOrder.indexOf(overId)
-      if (oldIndex === -1 || newIndex === -1) return
-      reorderColumns(projectId, arrayMove(proj.columnOrder, oldIndex, newIndex))
-      return
-    }
 
     const cols = selectProjectColumns(useBoardStore.getState(), projectId)
     const activeColumn = cols.find((c) => c.cardOrder.includes(activeId))
@@ -114,7 +98,6 @@ export default function Board() {
   }
 
   const activeCard = activeCardId ? cardsById[activeCardId] : null
-  const activeColumn = activeColumnId ? columns.find((c) => c.id === activeColumnId) : null
 
   function matchesFilters(card: Card): boolean {
     if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false
@@ -122,6 +105,9 @@ export default function Board() {
     if (tagFilter.length > 0 && !tagFilter.every((t) => card.tagIds.includes(t))) return false
     return true
   }
+
+  const activeColumns = columns.filter((c) => c.name !== 'NULLSPACE')
+  const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
 
   return (
     <div className="flex h-screen flex-col">
@@ -137,13 +123,6 @@ export default function Board() {
           </button>
           <h1 className="truncate text-[15px] font-semibold text-slate-100">{project.name}</h1>
         </div>
-        <button
-          type="button"
-          onClick={() => createColumn(projectId, 'New Phase')}
-          className="btn-ghost no-drag"
-        >
-          + Add phase
-        </button>
       </header>
 
       <FilterBar
@@ -164,32 +143,36 @@ export default function Board() {
         onDragEnd={handleDragEnd}
       >
         <div className="flex flex-1 items-start gap-4 overflow-x-auto p-5">
-          <SortableContext items={columns.map((c) => c.id)} strategy={horizontalListSortingStrategy}>
-            {columns.map((column) => (
+          {activeColumns.map((column) => (
+            <Column
+              key={column.id}
+              column={column}
+              cards={column.cardOrder
+                .map((id) => cardsById[id])
+                .filter((c): c is Card => Boolean(c))
+                .filter(matchesFilters)}
+              onOpenCard={setOpenCardId}
+            />
+          ))}
+          {nullspaceColumn && (
+            <>
+              <div className="mx-1 w-px shrink-0 self-stretch bg-white/10" aria-hidden="true" />
               <Column
-                key={column.id}
-                column={column}
-                cards={column.cardOrder
+                key={nullspaceColumn.id}
+                column={nullspaceColumn}
+                cards={nullspaceColumn.cardOrder
                   .map((id) => cardsById[id])
                   .filter((c): c is Card => Boolean(c))
                   .filter(matchesFilters)}
                 onOpenCard={setOpenCardId}
               />
-            ))}
-          </SortableContext>
-          {columns.length === 0 && (
-            <p className="py-16 text-sm text-slate-500">No phases yet — add one to get started.</p>
+            </>
           )}
         </div>
         <DragOverlay>
           {activeCard ? (
             <div className="w-[300px] rounded-xl border border-white/[0.14] bg-raised p-3.5 shadow-xl shadow-black/50">
               <CardBody card={activeCard} />
-            </div>
-          ) : null}
-          {activeColumn ? (
-            <div className="w-[300px] rounded-2xl border border-white/[0.12] bg-overlay px-4 py-3 text-sm font-semibold text-slate-100 shadow-xl shadow-black/50">
-              {activeColumn.name}
             </div>
           ) : null}
         </DragOverlay>

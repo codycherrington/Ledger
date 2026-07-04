@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Card, ChecklistItem, Column, Priority, Project, ResourceLink, Tag } from '../types'
 import { makeId } from '../lib/ids'
-import { nextColor } from '../lib/colors'
 import { boardStorage } from './persist'
 import { deleteAttachmentBlob, putAttachmentBlob } from './attachments'
 
@@ -15,11 +14,6 @@ interface BoardState {
   createProject: (name: string, description?: string) => string
   updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description'>>) => void
   deleteProject: (id: string) => void
-
-  createColumn: (projectId: string, name: string) => string
-  updateColumn: (id: string, patch: Partial<Pick<Column, 'name' | 'color'>>) => void
-  deleteColumn: (id: string) => void
-  reorderColumns: (projectId: string, newOrder: string[]) => void
 
   createCard: (projectId: string, columnId: string, title: string) => string
   updateCard: (
@@ -46,11 +40,47 @@ interface BoardState {
   removeChecklistItem: (cardId: string, itemId: string) => void
 }
 
-const DEFAULT_COLUMNS: { name: string; color: Column['color'] }[] = [
+const FIXED_COLUMNS: { name: string; color: Column['color'] }[] = [
   { name: 'To Do', color: 'slate' },
   { name: 'In Progress', color: 'sky' },
   { name: 'Done', color: 'emerald' },
+  { name: 'NULLSPACE', color: 'violet' },
 ]
+
+// Backfills any fixed column missing from a project (e.g. NULLSPACE on
+// pre-existing data). Idempotent — returns null once every project already
+// has all four. `columnOrder` is only touched as a membership list here;
+// render order is always derived from FIXED_COLUMNS, never from this array.
+function ensureFixedPhases(
+  state: Pick<BoardState, 'projects' | 'columns'>,
+): Pick<BoardState, 'projects' | 'columns'> | null {
+  let changed = false
+  const projects = { ...state.projects }
+  const columns = { ...state.columns }
+
+  for (const [projectId, project] of Object.entries(projects)) {
+    const namesPresent = new Set(
+      project.columnOrder
+        .map((id) => columns[id])
+        .filter((c): c is Column => Boolean(c))
+        .map((c) => c.name),
+    )
+    let columnOrder = project.columnOrder
+    for (const def of FIXED_COLUMNS) {
+      if (!namesPresent.has(def.name)) {
+        const colId = makeId()
+        columns[colId] = { id: colId, projectId, name: def.name, color: def.color, cardOrder: [] }
+        columnOrder = [...columnOrder, colId]
+        changed = true
+      }
+    }
+    if (columnOrder !== project.columnOrder) {
+      projects[projectId] = { ...project, columnOrder }
+    }
+  }
+
+  return changed ? { projects, columns } : null
+}
 
 export const useBoardStore = create<BoardState>()(
   persist(
@@ -65,7 +95,7 @@ export const useBoardStore = create<BoardState>()(
         const now = Date.now()
         const columns: Record<string, Column> = {}
         const columnOrder: string[] = []
-        for (const def of DEFAULT_COLUMNS) {
+        for (const def of FIXED_COLUMNS) {
           const colId = makeId()
           columns[colId] = { id: colId, projectId: id, name: def.name, color: def.color, cardOrder: [] }
           columnOrder.push(colId)
@@ -114,74 +144,6 @@ export const useBoardStore = create<BoardState>()(
             if (tag.projectId === id) delete tags[tid]
           }
           return { projects, columns, cards, tags }
-        })
-      },
-
-      createColumn: (projectId, name) => {
-        const id = makeId()
-        set((state) => {
-          const project = state.projects[projectId]
-          if (!project) return state
-          const color = nextColor(project.columnOrder.length)
-          const column: Column = { id, projectId, name, color, cardOrder: [] }
-          return {
-            columns: { ...state.columns, [id]: column },
-            projects: {
-              ...state.projects,
-              [projectId]: {
-                ...project,
-                columnOrder: [...project.columnOrder, id],
-                updatedAt: Date.now(),
-              },
-            },
-          }
-        })
-        return id
-      },
-
-      updateColumn: (id, patch) => {
-        set((state) => {
-          const column = state.columns[id]
-          if (!column) return state
-          return { columns: { ...state.columns, [id]: { ...column, ...patch } } }
-        })
-      },
-
-      deleteColumn: (id) => {
-        const state = get()
-        const column = state.columns[id]
-        if (!column) return
-        const project = state.projects[column.projectId]
-        const cardIds = column.cardOrder
-        const attachmentIds = cardIds.flatMap((cardId) => state.cards[cardId]?.attachments.map((a) => a.id) ?? [])
-        void Promise.all(attachmentIds.map((aid) => deleteAttachmentBlob(aid)))
-
-        set((s) => {
-          const columns = { ...s.columns }
-          delete columns[id]
-          const cards = { ...s.cards }
-          for (const cardId of cardIds) delete cards[cardId]
-          const projects = project
-            ? {
-                ...s.projects,
-                [project.id]: {
-                  ...project,
-                  columnOrder: project.columnOrder.filter((cid) => cid !== id),
-                  updatedAt: Date.now(),
-                },
-              }
-            : s.projects
-          return { columns, cards, projects }
-        })
-      },
-
-      reorderColumns: (projectId, newOrder) => {
-        set((state) => {
-          const project = state.projects[projectId]
-          if (!project) return state
-          return {
-            projects: { ...state.projects, [projectId]: { ...project, columnOrder: newOrder, updatedAt: Date.now() } },
-          }
         })
       },
 
@@ -394,6 +356,11 @@ export const useBoardStore = create<BoardState>()(
         cards: state.cards,
         tags: state.tags,
       }),
+      onRehydrateStorage: () => (state) => {
+        if (!state) return
+        const patch = ensureFixedPhases(state)
+        if (patch) useBoardStore.setState(patch)
+      },
     },
   ),
 )
@@ -404,7 +371,13 @@ export type { Priority }
 export function selectProjectColumns(state: BoardState, projectId: string): Column[] {
   const project = state.projects[projectId]
   if (!project) return []
-  return project.columnOrder.map((id) => state.columns[id]).filter((c): c is Column => Boolean(c))
+  const byName = new Map(
+    project.columnOrder
+      .map((id) => state.columns[id])
+      .filter((c): c is Column => Boolean(c))
+      .map((c) => [c.name, c] as const),
+  )
+  return FIXED_COLUMNS.map((def) => byName.get(def.name)).filter((c): c is Column => Boolean(c))
 }
 
 export function selectColumnCards(state: BoardState, columnId: string): Card[] {
