@@ -1,0 +1,245 @@
+// electron/store.cjs hardcodes DATA_DIR to this checkout's real data/
+// folder, which holds the user's actual, irreplaceable task data (see
+// CLAUDE.md). To make this module safely testable, it honors a
+// TASKTRAY_DATA_DIR env var override (test-only — never set in production)
+// so these tests run against a disposable temp directory on the real
+// filesystem instead of mocking fs, and instead of ever touching the real
+// data/ folder.
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+
+const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasktray-store-test-'))
+process.env.TASKTRAY_DATA_DIR = tmpDataDir
+
+const { DATA_DIR, saveState, loadState, putAttachment, getAttachment, deleteAttachment } = await import(
+  '../../electron/store.cjs'
+)
+
+// Guardrail: if this ever points anywhere near the real checkout's data/
+// folder, every test in this file must refuse to run rather than risk
+// touching real user data.
+beforeAll(() => {
+  if (!DATA_DIR.startsWith(os.tmpdir())) {
+    throw new Error(`Refusing to run: DATA_DIR (${DATA_DIR}) is not a temp directory.`)
+  }
+})
+
+function resetDataDir() {
+  fs.rmSync(DATA_DIR, { recursive: true, force: true })
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+}
+
+function writeCsv(file: string, contents: string) {
+  fs.writeFileSync(path.join(DATA_DIR, file), contents, 'utf8')
+}
+
+beforeEach(() => {
+  resetDataDir()
+})
+
+afterAll(() => {
+  fs.rmSync(tmpDataDir, { recursive: true, force: true })
+})
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function emptyState(): Record<string, Record<string, any>> {
+  return { projects: {}, columns: {}, cards: {}, tags: {}, folders: {} }
+}
+
+describe('loadState', () => {
+  it('returns null when no data files exist yet', () => {
+    expect(loadState()).toBeNull()
+  })
+
+  it('round-trips a full board through saveState -> loadState', () => {
+    const state = {
+      projects: {
+        p1: {
+          id: 'p1',
+          name: 'Project One',
+          description: 'desc',
+          links: [{ id: 'l1', label: 'Docs', url: 'https://example.com' }],
+          attachments: [],
+          createdAt: 1000,
+          updatedAt: 2000,
+          columnOrder: ['c1', 'c2'],
+          columnId: 'home1',
+        },
+      },
+      columns: {
+        c1: { id: 'c1', ownerType: 'project', ownerId: 'p1', name: 'To Do', color: 'slate', cardOrder: ['card1'] },
+        home1: { id: 'home1', ownerType: 'home', ownerId: undefined, name: 'To Do', color: 'slate', cardOrder: ['p1'] },
+      },
+      cards: {
+        card1: {
+          id: 'card1',
+          projectId: 'p1',
+          folderId: undefined,
+          columnId: 'c1',
+          title: 'Do the thing',
+          summary: 'a summary',
+          priority: 'high',
+          dueDate: '2026-08-01',
+          tagIds: ['t1', 't2'],
+          links: [],
+          attachments: [],
+          checklist: [{ id: 'ci1', text: 'step 1', done: true }],
+          createdAt: 1500,
+          updatedAt: 2500,
+        },
+      },
+      tags: {
+        t1: { id: 't1', name: 'urgent', color: 'red' },
+      },
+      folders: {},
+    }
+
+    saveState(state)
+    const loaded = loadState()!
+
+    expect(loaded.projects.p1).toEqual(state.projects.p1)
+    expect(loaded.cards.card1).toEqual(state.cards.card1)
+    expect(loaded.columns.c1).toEqual(state.columns.c1)
+    expect(loaded.tags.t1).toEqual(state.tags.t1)
+  })
+
+  it('skips rows with no id', () => {
+    writeCsv('tags.csv', 'id,name,color\r\n,Orphan,red\r\nt1,Real,blue\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    const loaded = loadState()!
+    expect(Object.keys(loaded.tags)).toEqual(['t1'])
+  })
+
+  it('defaults a project missing columnId to empty string (backfilled later by ensureFixedPhases)', () => {
+    writeCsv(
+      'projects.csv',
+      'id,name,description,links,attachments,createdAt,updatedAt,columnOrder,columnId\r\n' +
+        'p1,Legacy Project,,[],[],1000,1000,c1;c2,\r\n',
+    )
+    for (const file of ['columns.csv', 'cards.csv', 'tags.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    const loaded = loadState()!
+    expect(loaded.projects.p1.columnId).toBe('')
+    expect(loaded.projects.p1.columnOrder).toEqual(['c1', 'c2'])
+  })
+
+  it('falls back to an empty array when a JSON-encoded cell is malformed', () => {
+    writeCsv(
+      'cards.csv',
+      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,checklist,createdAt,updatedAt\r\n' +
+        'card1,,,col1,Task,,,,,not valid json,[],[],1000,1000\r\n',
+    )
+    for (const file of ['projects.csv', 'columns.csv', 'tags.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    const loaded = loadState()!
+    expect(loaded.cards.card1.links).toEqual([])
+  })
+
+  it('migrates legacy columns.csv rows that carry projectId instead of ownerType/ownerId', () => {
+    writeCsv('columns.csv', 'id,projectId,name,color,cardOrder\r\nc1,p1,To Do,slate,\r\n')
+    for (const file of ['projects.csv', 'cards.csv', 'tags.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    const loaded = loadState()!
+    expect(loaded.columns.c1.ownerType).toBe('project')
+    expect(loaded.columns.c1.ownerId).toBe('p1')
+  })
+
+  it('migrates legacy folder-owned columns into a flat taskIds list and remaps card columnIds', () => {
+    // Pre-migration schema: a folder owned its own 4 sub-columns, and filed
+    // cards lived in those columns' cardOrder rather than in a taskIds list.
+    writeCsv(
+      'folders.csv',
+      'id,ownerType,ownerId,name,color,description,columnId,taskIds,createdAt,updatedAt\r\n' +
+        'f1,home,,Phase 1,blue,,home-todo,,1000,1000\r\n',
+    )
+    writeCsv(
+      'columns.csv',
+      'id,ownerType,ownerId,name,color,cardOrder\r\n' +
+        'home-todo,home,,To Do,slate,f1\r\n' +
+        'folder-sub-todo,folder,f1,To Do,slate,card1\r\n',
+    )
+    writeCsv(
+      'cards.csv',
+      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,checklist,createdAt,updatedAt\r\n' +
+        'card1,,,folder-sub-todo,Filed task,,,,,[],[],[],1000,1000\r\n',
+    )
+    writeCsv('projects.csv', '')
+    writeCsv('tags.csv', '')
+
+    const loaded = loadState()!
+
+    expect(loaded.folders.f1.taskIds).toEqual(['card1'])
+    // The folder's own sub-column is discarded post-migration.
+    expect(loaded.columns['folder-sub-todo']).toBeUndefined()
+    // The card's status is remapped onto the real "To Do" column of the
+    // folder's owner board (Home), matched by name.
+    expect(loaded.cards.card1.columnId).toBe('home-todo')
+
+    // Migration is persisted immediately so the on-disk schema doesn't linger stale.
+    const reloaded = loadState()!
+    expect(reloaded.folders.f1.taskIds).toEqual(['card1'])
+  })
+})
+
+describe('saveState', () => {
+  it('writes one CSV file per table into DATA_DIR', () => {
+    saveState(emptyState())
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'tags.csv', 'folders.csv']) {
+      expect(fs.existsSync(path.join(DATA_DIR, file))).toBe(true)
+    }
+  })
+
+  it('writes via a temp file + rename rather than a direct write', () => {
+    saveState(emptyState())
+    // writeFileAtomic writes to "<file>.tmp" then renames over the real path
+    // — after saveState returns, no ".tmp" file should remain.
+    const leftoverTmp = fs.readdirSync(DATA_DIR).filter((f) => f.endsWith('.tmp'))
+    expect(leftoverTmp).toEqual([])
+  })
+
+  it('serializes list-of-id fields joined with ";"', () => {
+    const state = emptyState()
+    state.columns.c1 = { id: 'c1', ownerType: 'home', ownerId: undefined, name: 'To Do', color: 'slate', cardOrder: ['a', 'b', 'c'] }
+    saveState(state)
+    const csv = fs.readFileSync(path.join(DATA_DIR, 'columns.csv'), 'utf8')
+    expect(csv).toContain('a;b;c')
+  })
+})
+
+describe('attachments', () => {
+  it('putAttachment then getAttachment round-trips name and bytes', () => {
+    const data = new TextEncoder().encode('hello world').buffer
+    putAttachment('att1', 'notes.txt', data)
+    const result = getAttachment('att1')
+    expect(result).not.toBeNull()
+    expect(result!.name).toBe('notes.txt')
+    expect(Buffer.from(result!.data).toString()).toBe('hello world')
+  })
+
+  it('sanitizes path-unsafe characters out of the stored filename', () => {
+    putAttachment('att2', 'weird/name:here.txt', new ArrayBuffer(0))
+    const result = getAttachment('att2')
+    expect(result!.name).toBe('weird_name_here.txt')
+  })
+
+  it('getAttachment returns null for an unknown id', () => {
+    expect(getAttachment('does-not-exist')).toBeNull()
+  })
+
+  it('deleteAttachment removes the file so a later get returns null', () => {
+    putAttachment('att3', 'file.bin', new ArrayBuffer(4))
+    deleteAttachment('att3')
+    expect(getAttachment('att3')).toBeNull()
+  })
+
+  it('deleteAttachment on a missing id is a no-op rather than throwing', () => {
+    expect(() => deleteAttachment('never-existed')).not.toThrow()
+  })
+})

@@ -13,6 +13,7 @@ dist-ssr
 *.local
 release
 build/icon.iconset
+coverage
 
 # Personal board data — CSVs and uploaded files, not meant for git
 data/

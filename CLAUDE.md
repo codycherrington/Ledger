@@ -15,9 +15,22 @@ npm run app           # build + launch Electron directly, no install
 npm run app:build     # build + electron-builder --dir (unsigned, to release/)
 npm run app:install   # scripts/package-mac.sh — build, ad-hoc codesign, install to /Applications/TaskTray.app
 npm run lint          # oxlint
+npm test              # vitest run — unit tests for src/lib, src/store, electron/csv.cjs, electron/store.cjs
+npm run test:watch    # vitest, watch mode
 ```
 
-There is no test suite and no single-test command. `npm run dev` against real data is the actual verification loop for this app — there's no browser fallback to spot-check in. When testing against the real `data/` folder, back it up first (`cp -r data /tmp/...`) since it's the user's real, irreplaceable task data, not fixtures.
+The unit suite (see [`TESTING.md`](./TESTING.md)) covers business logic — the
+board store, persistence adapter, and CSV serialization — but not React
+components. For UI changes, `npm run dev` against real data is still the
+verification loop: there's no browser fallback to spot-check in. When
+testing against the real `data/` folder by hand (not via the test suite,
+which never touches it — see TESTING.md), back it up first
+(`cp -r data /tmp/...`) since it's the user's real, irreplaceable task data,
+not fixtures.
+
+`electron/store.cjs`'s `DATA_DIR` honors a `TASKTRAY_DATA_DIR` env var
+override used only by its test file to redirect I/O to a disposable temp
+directory — never set this when actually running the app.
 
 ## Architecture
 
