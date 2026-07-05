@@ -55,7 +55,9 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
   function openItem(item: BoardItem) {
     if (item.kind === 'task') onOpenCard(item.card.id)
     else if (item.kind === 'project') navigate(`/project/${item.project.id}`)
-    // Folders have no dedicated page anymore — they expand inline on the board view instead.
+    // A folder row in a board-level table view doesn't navigate anywhere —
+    // open one via FolderCard's "Open folder board" button (/folder/:id) or
+    // its inline expand instead.
   }
 
   const sorted = useMemo(() => {

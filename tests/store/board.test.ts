@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   boardItemId,
   boardItemTitle,
+  reorderFolderTaskIdsWithinColumn,
   resolveItem,
   selectAllTags,
   selectColumnItems,
@@ -275,6 +276,49 @@ describe('cards: creation, filing, moving, status', () => {
 
     useBoardStore.getState().reorderFolderTasks(folderId, [b, a])
     expect(useBoardStore.getState().folders[folderId].taskIds).toEqual([b, a])
+  })
+
+  describe('reorderFolderTaskIdsWithinColumn', () => {
+    it('reorders only within the target column, leaving other columns interleaved as before', () => {
+      const home = seedHomeColumns()
+      const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+      const a = useBoardStore.getState().createCardInFolder(folderId, 'A') // To Do
+      const x = useBoardStore.getState().createCardInFolder(folderId, 'X') // will move to In Progress
+      const b = useBoardStore.getState().createCardInFolder(folderId, 'B') // To Do
+      const y = useBoardStore.getState().createCardInFolder(folderId, 'Y') // will move to In Progress
+      useBoardStore.getState().setCardStatus(x, home.inProgress)
+      useBoardStore.getState().setCardStatus(y, home.inProgress)
+      // taskIds order: [a, x, b, y] — a/b in To Do, x/y in In Progress
+
+      const state = useBoardStore.getState()
+      const result = reorderFolderTaskIdsWithinColumn(state.folders[folderId], state.cards, home.todo, a, b)
+
+      expect(result).toEqual([b, x, a, y])
+    })
+
+    it('returns null when activeId and overId are the same card', () => {
+      const home = seedHomeColumns()
+      const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+      const a = useBoardStore.getState().createCardInFolder(folderId, 'A')
+
+      const state = useBoardStore.getState()
+      const result = reorderFolderTaskIdsWithinColumn(state.folders[folderId], state.cards, home.todo, a, a)
+
+      expect(result).toBeNull()
+    })
+
+    it('returns null when either id is not in the target column', () => {
+      const home = seedHomeColumns()
+      const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+      const a = useBoardStore.getState().createCardInFolder(folderId, 'A')
+      const x = useBoardStore.getState().createCardInFolder(folderId, 'X')
+      useBoardStore.getState().setCardStatus(x, home.inProgress)
+
+      const state = useBoardStore.getState()
+      const result = reorderFolderTaskIdsWithinColumn(state.folders[folderId], state.cards, home.todo, a, x)
+
+      expect(result).toBeNull()
+    })
   })
 
   it('updateCard patches fields and bumps updatedAt', () => {
