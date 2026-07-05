@@ -8,15 +8,17 @@ import { create } from 'zustand'
 interface SaveStatusState {
   status: 'idle' | 'saving' | 'saved' | 'error'
   savedAt: number | null
+  error: string | null
   setSaving: () => void
   setSaved: () => void
-  setError: () => void
+  setError: (message: string) => void
 }
 
 export const useSaveStatusStore = create<SaveStatusState>((set) => ({
   status: 'idle',
   savedAt: null,
-  setSaving: () => set({ status: 'saving' }),
-  setSaved: () => set({ status: 'saved', savedAt: Date.now() }),
-  setError: () => set({ status: 'error' }),
+  error: null,
+  setSaving: () => set({ status: 'saving', error: null }),
+  setSaved: () => set({ status: 'saved', savedAt: Date.now(), error: null }),
+  setError: (message) => set({ status: 'error', error: message }),
 }))
