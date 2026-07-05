@@ -18,8 +18,9 @@ import CardDetailDialog from './CardDetailDialog'
 import FilterBar from './FilterBar'
 import ViewToggle from './ViewToggle'
 import TableView from './TableView'
-import SaveIndicator from './SaveIndicator'
+import SaveStatusLight from './SaveStatusLight'
 import GlobalAddButton from './GlobalAddButton'
+import { useViewModeStore } from '../store/viewMode'
 import { BackIcon } from './icons'
 import type { BoardItem, Card, Folder, Priority } from '../types'
 
@@ -43,7 +44,8 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority | null>(null)
   const [tagFilter, setTagFilter] = useState<string[]>([])
-  const [view, setView] = useState<'board' | 'table'>('board')
+  const view = useViewModeStore((s) => s.view)
+  const setView = useViewModeStore((s) => s.setView)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
 
@@ -110,7 +112,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
           <h1 className="truncate text-[15px] font-semibold text-slate-100">{folder.name}</h1>
         </div>
         <div className="flex items-center gap-3">
-          <SaveIndicator />
+          <SaveStatusLight />
           <ViewToggle view={view} onChange={setView} />
         </div>
       </header>

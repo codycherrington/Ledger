@@ -37,7 +37,6 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
           style={style}
           {...attributes}
           {...listeners}
-          onClick={() => setExpanded((v) => !v)}
           className="cursor-grab p-3.5 active:cursor-grabbing"
         >
           {/* float (not absolute) so wrapping name/description text flows
@@ -66,9 +65,27 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
           </button>
           <ItemTypeBadge kind="folder" />
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
-            <ChevronIcon className={`h-3 w-3 shrink-0 text-slate-500 transition ${expanded ? 'rotate-90' : ''}`} />
+            <button
+              type="button"
+              aria-label={expanded ? 'Collapse folder' : 'Expand folder'}
+              onClick={(e) => {
+                e.stopPropagation()
+                setExpanded((v) => !v)
+              }}
+              className="-m-1.5 shrink-0 p-1.5"
+            >
+              <ChevronIcon className={`h-3 w-3 text-slate-500 transition ${expanded ? 'rotate-90' : ''}`} />
+            </button>
             <FolderIcon className={`h-3.5 w-3.5 shrink-0 ${colorClasses.text}`} />
-            <p className="truncate text-sm font-medium text-slate-100">{folder.name}</p>
+            <p
+              onClick={(e) => {
+                e.stopPropagation()
+                navigate(`/folder/${folder.id}`)
+              }}
+              className="truncate text-sm font-medium text-slate-100 transition hover:text-white hover:underline"
+            >
+              {folder.name}
+            </p>
             <span className="rounded-full bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-slate-500">
               {folder.taskIds.length}
             </span>

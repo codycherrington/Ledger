@@ -10,7 +10,7 @@ A local-only Kanban and task manager for the Mac desktop. No account, no server,
 - **Table view** — toggle any board to a sortable, filterable spreadsheet-style list (title, category, priority, due date, status), with inline editing.
 - **Tags, priority, due dates, checklists, links, attachments** — tags are a single global pool usable on any task, project-scoped or not.
 - **Filter popover** — search plus priority/tag filters tucked behind one "Filter" button instead of a permanent row.
-- **Save indicator** — a small "Saving…" / "Saved" status in the header confirms every change actually landed on disk.
+- **Save status light** — a persistent dot in the header glows green when everything's saved, amber while saving, and red on failure; hover the red light for the actual error and a button to copy it.
 
 Everything is stored as CSVs under `~/Library/Application Support/tasktray/` (see [Data storage](#data-storage) below). In the app, **File → Open Data Folder** (⌘⇧O) jumps straight there.
 

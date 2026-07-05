@@ -40,7 +40,7 @@ export function boardStorage<T>(): PersistStorage<T> {
         await requireFS().saveState(value.state)
         setSaved()
       } catch (err) {
-        setError()
+        setError(err instanceof Error ? err.message : String(err))
         throw err
       }
     },
