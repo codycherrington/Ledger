@@ -8,6 +8,7 @@ import {
   selectColumnItems,
   selectFolderTasks,
   selectOwnerColumns,
+  sortFolderTasksForDisplay,
   useBoardStore,
 } from '../../src/store/board'
 import { makeId } from '../../src/lib/ids'
@@ -196,6 +197,56 @@ describe('folders', () => {
     expect(state.cards[cardId].columnId).toBe(home.todo)
     expect(state.columns[home.todo].cardOrder).toContain(cardId)
     expect(state.columns[home.todo].cardOrder).not.toContain(folderId)
+  })
+
+  it('updateFolder patches priority/dueDate', () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+    useBoardStore.getState().updateFolder(folderId, { priority: 'high', dueDate: '2026-08-01' })
+    const folder = useBoardStore.getState().folders[folderId]
+    expect(folder.priority).toBe('high')
+    expect(folder.dueDate).toBe('2026-08-01')
+  })
+
+  it('toggleFolderTag adds and removes a tag id from a folder', () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+    const tagId = useBoardStore.getState().createTag('urgent', 'red')
+
+    useBoardStore.getState().toggleFolderTag(folderId, tagId)
+    expect(useBoardStore.getState().folders[folderId].tagIds).toEqual([tagId])
+
+    useBoardStore.getState().toggleFolderTag(folderId, tagId)
+    expect(useBoardStore.getState().folders[folderId].tagIds).toEqual([])
+  })
+
+  it('addFolderLink / updateFolderLink / removeFolderLink manage a folder\'s links array', () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+
+    useBoardStore.getState().addFolderLink(folderId, 'Repo', 'https://github.com/x')
+    const linkId = useBoardStore.getState().folders[folderId].links[0].id
+
+    useBoardStore.getState().updateFolderLink(folderId, linkId, { label: 'Repo v2' })
+    expect(useBoardStore.getState().folders[folderId].links[0].label).toBe('Repo v2')
+
+    useBoardStore.getState().removeFolderLink(folderId, linkId)
+    expect(useBoardStore.getState().folders[folderId].links).toEqual([])
+  })
+
+  it('addFolderAttachment stores metadata via putAttachmentBlob and removeFolderAttachment clears it via deleteAttachmentBlob', async () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+    const file = new File(['contents'], 'notes.txt', { type: 'text/plain' })
+
+    await useBoardStore.getState().addFolderAttachment(folderId, file)
+    expect(window.boardFS!.putAttachment).toHaveBeenCalled()
+    const attachment = useBoardStore.getState().folders[folderId].attachments[0]
+    expect(attachment.name).toBe('notes.txt')
+
+    await useBoardStore.getState().removeFolderAttachment(folderId, attachment.id)
+    expect(window.boardFS!.deleteAttachment).toHaveBeenCalledWith(attachment.id)
+    expect(useBoardStore.getState().folders[folderId].attachments).toEqual([])
   })
 })
 
@@ -467,9 +518,22 @@ describe('tags', () => {
     expect(state.tags[tagId]).toBeUndefined()
     expect(state.cards[cardId].tagIds).toEqual([])
   })
+
+  it('deleteTag also scrubs it from every folder that referenced it', () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+    const tagId = useBoardStore.getState().createTag('urgent', 'red')
+    useBoardStore.getState().toggleFolderTag(folderId, tagId)
+
+    useBoardStore.getState().deleteTag(tagId)
+
+    const state = useBoardStore.getState()
+    expect(state.tags[tagId]).toBeUndefined()
+    expect(state.folders[folderId].tagIds).toEqual([])
+  })
 })
 
-describe('card links, attachments, checklist', () => {
+describe('card links, attachments', () => {
   it('addLink / updateLink / removeLink manage a card\'s links array', () => {
     const home = seedHomeColumns()
     const cardId = useBoardStore.getState().createCard(home.todo, 'Task')
@@ -499,20 +563,6 @@ describe('card links, attachments, checklist', () => {
     expect(useBoardStore.getState().cards[cardId].attachments).toEqual([])
   })
 
-  it('addChecklistItem / toggleChecklistItem / removeChecklistItem manage the checklist', () => {
-    const home = seedHomeColumns()
-    const cardId = useBoardStore.getState().createCard(home.todo, 'Task')
-
-    useBoardStore.getState().addChecklistItem(cardId, 'Step 1')
-    const itemId = useBoardStore.getState().cards[cardId].checklist[0].id
-    expect(useBoardStore.getState().cards[cardId].checklist[0].done).toBe(false)
-
-    useBoardStore.getState().toggleChecklistItem(cardId, itemId)
-    expect(useBoardStore.getState().cards[cardId].checklist[0].done).toBe(true)
-
-    useBoardStore.getState().removeChecklistItem(cardId, itemId)
-    expect(useBoardStore.getState().cards[cardId].checklist).toEqual([])
-  })
 })
 
 describe('selectors and helpers', () => {
@@ -664,5 +714,31 @@ describe('rehydration (ensureFixedPhases via persist.rehydrate)', () => {
     const state = useBoardStore.getState()
     const projectCols = state.projects[projectId].columnOrder.map((id) => state.columns[id])
     expect(projectCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'NULLSPACE', 'To Do'].sort())
+  })
+})
+
+describe('sortFolderTasksForDisplay', () => {
+  it('sorts by status column order first, then priority descending, keeping ties stable', () => {
+    const home = seedHomeColumns()
+    const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+
+    const a = useBoardStore.getState().createCardInFolder(folderId, 'a') // To Do, no priority
+    const b = useBoardStore.getState().createCardInFolder(folderId, 'b') // To Do, high
+    const c = useBoardStore.getState().createCardInFolder(folderId, 'c') // In Progress, low
+    const d = useBoardStore.getState().createCardInFolder(folderId, 'd') // To Do, high (ties with b)
+
+    useBoardStore.getState().updateCard(b, { priority: 'high' })
+    useBoardStore.getState().setCardStatus(c, home.inProgress)
+    useBoardStore.getState().updateCard(c, { priority: 'low' })
+    useBoardStore.getState().updateCard(d, { priority: 'high' })
+
+    const state = useBoardStore.getState()
+    const columns = Object.values(state.columns)
+    const tasks = [a, b, c, d].map((id) => state.cards[id])
+
+    const sorted = sortFolderTasksForDisplay(tasks, columns)
+    // To Do: high-priority ties (b, d) keep their relative order, before the
+    // no-priority task (a); In Progress sits after every To Do task.
+    expect(sorted.map((t) => t.id)).toEqual([b, d, a, c])
   })
 })

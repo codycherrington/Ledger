@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { useShallow } from 'zustand/react/shallow'
 import { COLOR_CLASSES, PRIORITY_COLOR, STATUS_COLOR } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
-import { boardItemId, boardItemTitle, selectAllTags, useBoardStore } from '../store/board'
+import { PRIORITY_RANK, boardItemId, boardItemTitle, selectAllTags, sortFolderTasksForDisplay, useBoardStore } from '../store/board'
 import { ChevronIcon } from './icons'
 import type { BoardItem, Card, Column, Priority } from '../types'
 
 const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', high: 'High' }
-const PRIORITY_RANK: Record<Priority, number> = { low: 0, med: 1, high: 2 }
 const TYPE_LABEL: Record<BoardItem['kind'], string> = { task: 'Task', project: 'Project', folder: 'Folder' }
 
 type SortKey = 'title' | 'priority' | 'dueDate' | 'status'
@@ -26,6 +25,7 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
   const navigate = useNavigate()
   const tags = useBoardStore(useShallow(selectAllTags))
   const updateCard = useBoardStore((s) => s.updateCard)
+  const updateFolder = useBoardStore((s) => s.updateFolder)
   const cardsById = useBoardStore((s) => s.cards)
   const [sortKey, setSortKey] = useState<SortKey>('status')
   const [sortDir, setSortDir] = useState<1 | -1>(1)
@@ -45,11 +45,11 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
   }
 
   function priorityOf(item: BoardItem): Priority | undefined {
-    return item.kind === 'task' ? item.card.priority : undefined
+    return item.kind === 'task' ? item.card.priority : item.kind === 'folder' ? item.folder.priority : undefined
   }
 
   function dueDateOf(item: BoardItem): string | undefined {
-    return item.kind === 'task' ? item.card.dueDate : undefined
+    return item.kind === 'task' ? item.card.dueDate : item.kind === 'folder' ? item.folder.dueDate : undefined
   }
 
   function columnIdOf(item: BoardItem): string {
@@ -112,7 +112,8 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
     for (const item of sorted) {
       out.push({ kind: 'item', item, nested: false })
       if (item.kind === 'folder' && expandedFolders.has(item.folder.id)) {
-        const tasks = item.folder.taskIds.map((cid) => cardsById[cid]).filter((c): c is Card => Boolean(c))
+        const rawTasks = item.folder.taskIds.map((cid) => cardsById[cid]).filter((c): c is Card => Boolean(c))
+        const tasks = sortFolderTasksForDisplay(rawTasks, columns)
         if (tasks.length === 0) {
           out.push({ kind: 'empty-folder', folderId: item.folder.id })
         } else {
@@ -121,7 +122,7 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
       }
     }
     return out
-  }, [sorted, expandedFolders, cardsById])
+  }, [sorted, expandedFolders, cardsById, columns])
 
   const colSpan = showTypeColumn ? 6 : 5
 
@@ -160,7 +161,7 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
             const priority = priorityOf(item)
             const dueDate = dueDateOf(item)
             const columnId = columnIdOf(item)
-            const tagIds = item.kind === 'task' ? item.card.tagIds : []
+            const tagIds = item.kind === 'task' ? item.card.tagIds : item.kind === 'folder' ? item.folder.tagIds : []
             const isExpanded = item.kind === 'folder' && expandedFolders.has(item.folder.id)
             return (
               <tr key={`${nested ? 'nested:' : ''}${id}`} className="group">
@@ -217,7 +218,7 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
                   </div>
                 </td>
                 <td className="border-b border-white/[0.04] px-3 py-2.5 group-hover:bg-white/[0.02]">
-                  {item.kind === 'task' ? (
+                  {item.kind === 'task' || item.kind === 'folder' ? (
                     <div className="flex gap-1">
                       {(['low', 'med', 'high'] as Priority[]).map((p) => {
                         const cls = COLOR_CLASSES[PRIORITY_COLOR[p]]
@@ -225,7 +226,11 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
                           <button
                             key={p}
                             type="button"
-                            onClick={() => updateCard(item.card.id, { priority: priority === p ? undefined : p })}
+                            onClick={() =>
+                              item.kind === 'task'
+                                ? updateCard(item.card.id, { priority: priority === p ? undefined : p })
+                                : updateFolder(item.folder.id, { priority: priority === p ? undefined : p })
+                            }
                             className={`rounded-md border px-1.5 py-0.5 text-[11px] font-medium transition ${
                               priority === p
                                 ? `${cls.bgSoft} ${cls.text} ${cls.border}`
@@ -242,12 +247,16 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
                   )}
                 </td>
                 <td className="border-b border-white/[0.04] px-3 py-2.5 group-hover:bg-white/[0.02]">
-                  {item.kind === 'task' ? (
+                  {item.kind === 'task' || item.kind === 'folder' ? (
                     <>
                       <input
                         type="date"
                         value={dueDate ?? ''}
-                        onChange={(e) => updateCard(item.card.id, { dueDate: e.target.value || undefined })}
+                        onChange={(e) =>
+                          item.kind === 'task'
+                            ? updateCard(item.card.id, { dueDate: e.target.value || undefined })
+                            : updateFolder(item.folder.id, { dueDate: e.target.value || undefined })
+                        }
                         className={`rounded-md border-none bg-transparent px-1 py-0.5 text-xs [color-scheme:dark] ${
                           dueDate && isOverdue(dueDate) ? 'text-rose-300' : dueDate && isDueToday(dueDate) ? 'text-amber-300' : 'text-slate-400'
                         }`}

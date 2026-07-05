@@ -13,7 +13,6 @@ import { arrayMove } from '@dnd-kit/sortable'
 import type {
   BoardItem,
   Card,
-  ChecklistItem,
   Column,
   ColumnOwnerType,
   Folder,
@@ -46,8 +45,20 @@ interface BoardState {
   removeProjectAttachment: (projectId: string, attachmentId: string) => Promise<void>
 
   createFolder: (ownerType: 'home' | 'project', ownerId: string | undefined, columnId: string, name: string) => string
-  updateFolder: (id: string, patch: Partial<Pick<Folder, 'name' | 'description' | 'color'>>) => void
+  updateFolder: (
+    id: string,
+    patch: Partial<Pick<Folder, 'name' | 'description' | 'color' | 'priority' | 'dueDate'>>,
+  ) => void
   deleteFolder: (id: string) => void
+
+  toggleFolderTag: (folderId: string, tagId: string) => void
+
+  addFolderLink: (folderId: string, label: string, url: string) => void
+  updateFolderLink: (folderId: string, linkId: string, patch: Partial<Pick<ResourceLink, 'label' | 'url'>>) => void
+  removeFolderLink: (folderId: string, linkId: string) => void
+
+  addFolderAttachment: (folderId: string, file: File) => Promise<void>
+  removeFolderAttachment: (folderId: string, attachmentId: string) => Promise<void>
 
   createCard: (columnId: string, title: string) => string
   createCardInFolder: (folderId: string, title: string) => string
@@ -73,10 +84,6 @@ interface BoardState {
 
   addAttachment: (cardId: string, file: File) => Promise<void>
   removeAttachment: (cardId: string, attachmentId: string) => Promise<void>
-
-  addChecklistItem: (cardId: string, text: string) => void
-  toggleChecklistItem: (cardId: string, itemId: string) => void
-  removeChecklistItem: (cardId: string, itemId: string) => void
 }
 
 const FIXED_COLUMNS: { name: string; color: Column['color'] }[] = [
@@ -322,6 +329,9 @@ export const useBoardStore = create<BoardState>()(
             ownerId,
             name,
             color: nextColor(Object.keys(state.folders).length),
+            tagIds: [],
+            links: [],
+            attachments: [],
             columnId,
             taskIds: [],
             createdAt: now,
@@ -350,6 +360,7 @@ export const useBoardStore = create<BoardState>()(
         const state = get()
         const folder = state.folders[id]
         if (!folder) return
+        void Promise.all(folder.attachments.map((a) => deleteAttachmentBlob(a.id)))
 
         set((s) => {
           const folders = { ...s.folders }
@@ -372,6 +383,65 @@ export const useBoardStore = create<BoardState>()(
         })
       },
 
+      toggleFolderTag: (folderId, tagId) => {
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const tagIds = folder.tagIds.includes(tagId)
+            ? folder.tagIds.filter((id) => id !== tagId)
+            : [...folder.tagIds, tagId]
+          return { folders: { ...state.folders, [folderId]: { ...folder, tagIds, updatedAt: Date.now() } } }
+        })
+      },
+
+      addFolderLink: (folderId, label, url) => {
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const link: ResourceLink = { id: makeId(), label, url }
+          return { folders: { ...state.folders, [folderId]: { ...folder, links: [...folder.links, link], updatedAt: Date.now() } } }
+        })
+      },
+
+      updateFolderLink: (folderId, linkId, patch) => {
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const links = folder.links.map((l) => (l.id === linkId ? { ...l, ...patch } : l))
+          return { folders: { ...state.folders, [folderId]: { ...folder, links, updatedAt: Date.now() } } }
+        })
+      },
+
+      removeFolderLink: (folderId, linkId) => {
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const links = folder.links.filter((l) => l.id !== linkId)
+          return { folders: { ...state.folders, [folderId]: { ...folder, links, updatedAt: Date.now() } } }
+        })
+      },
+
+      addFolderAttachment: async (folderId, file) => {
+        const id = makeId()
+        await putAttachmentBlob(id, file)
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const attachments = [...folder.attachments, { id, name: file.name, type: file.type, size: file.size }]
+          return { folders: { ...state.folders, [folderId]: { ...folder, attachments, updatedAt: Date.now() } } }
+        })
+      },
+
+      removeFolderAttachment: async (folderId, attachmentId) => {
+        await deleteAttachmentBlob(attachmentId)
+        set((state) => {
+          const folder = state.folders[folderId]
+          if (!folder) return state
+          const attachments = folder.attachments.filter((a) => a.id !== attachmentId)
+          return { folders: { ...state.folders, [folderId]: { ...folder, attachments, updatedAt: Date.now() } } }
+        })
+      },
+
       createCard: (columnId, title) => {
         const id = makeId()
         const now = Date.now()
@@ -387,7 +457,6 @@ export const useBoardStore = create<BoardState>()(
             tagIds: [],
             links: [],
             attachments: [],
-            checklist: [],
             createdAt: now,
             updatedAt: now,
           }
@@ -415,7 +484,6 @@ export const useBoardStore = create<BoardState>()(
             tagIds: [],
             links: [],
             attachments: [],
-            checklist: [],
             createdAt: now,
             updatedAt: now,
           }
@@ -623,7 +691,13 @@ export const useBoardStore = create<BoardState>()(
               cards[cardId] = { ...card, tagIds: card.tagIds.filter((tid) => tid !== id) }
             }
           }
-          return { tags, cards }
+          const folders = { ...state.folders }
+          for (const [folderId, folder] of Object.entries(state.folders)) {
+            if (folder.tagIds.includes(id)) {
+              folders[folderId] = { ...folder, tagIds: folder.tagIds.filter((tid) => tid !== id) }
+            }
+          }
+          return { tags, cards, folders }
         })
       },
 
@@ -686,32 +760,6 @@ export const useBoardStore = create<BoardState>()(
         })
       },
 
-      addChecklistItem: (cardId, text) => {
-        set((state) => {
-          const card = state.cards[cardId]
-          if (!card) return state
-          const item: ChecklistItem = { id: makeId(), text, done: false }
-          return { cards: { ...state.cards, [cardId]: { ...card, checklist: [...card.checklist, item], updatedAt: Date.now() } } }
-        })
-      },
-
-      toggleChecklistItem: (cardId, itemId) => {
-        set((state) => {
-          const card = state.cards[cardId]
-          if (!card) return state
-          const checklist = card.checklist.map((it) => (it.id === itemId ? { ...it, done: !it.done } : it))
-          return { cards: { ...state.cards, [cardId]: { ...card, checklist, updatedAt: Date.now() } } }
-        })
-      },
-
-      removeChecklistItem: (cardId, itemId) => {
-        set((state) => {
-          const card = state.cards[cardId]
-          if (!card) return state
-          const checklist = card.checklist.filter((it) => it.id !== itemId)
-          return { cards: { ...state.cards, [cardId]: { ...card, checklist, updatedAt: Date.now() } } }
-        })
-      },
     }),
     {
       name: 'tasktray-store',
@@ -805,6 +853,23 @@ export function selectFolderTasks(state: Pick<BoardState, 'folders' | 'cards'>, 
 
 export function selectAllTags(state: Pick<BoardState, 'tags'>): Tag[] {
   return Object.values(state.tags)
+}
+
+export const PRIORITY_RANK: Record<Priority, number> = { low: 0, med: 1, high: 2 }
+
+// Status ascending (by the owner board's fixed column order), then priority
+// descending (High → Medium → Low → none). Stable sort, so tasks tying on
+// both keep their existing filed order — manual same-status/-priority
+// ordering is preserved rather than fought. Used to order a folder's tasks
+// wherever its dropdown is shown (inline in Kanban, expanded in Table view).
+export function sortFolderTasksForDisplay(tasks: Card[], columns: Column[]): Card[] {
+  const columnIndexById = new Map(columns.map((c, i) => [c.id, i]))
+  const rank = (p?: Priority) => (p ? PRIORITY_RANK[p] : -1)
+  return [...tasks].sort((a, b) => {
+    const statusCmp = (columnIndexById.get(a.columnId) ?? 0) - (columnIndexById.get(b.columnId) ?? 0)
+    if (statusCmp !== 0) return statusCmp
+    return rank(b.priority) - rank(a.priority)
+  })
 }
 
 // Reorders a folder's tasks within one status column while leaving every

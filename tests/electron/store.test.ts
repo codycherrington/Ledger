@@ -101,7 +101,6 @@ describe('loadState', () => {
           tagIds: ['t1', 't2'],
           links: [],
           attachments: [],
-          checklist: [{ id: 'ci1', text: 'step 1', done: true }],
           createdAt: 1500,
           updatedAt: 2500,
         },
@@ -109,7 +108,25 @@ describe('loadState', () => {
       tags: {
         t1: { id: 't1', name: 'urgent', color: 'red' },
       },
-      folders: {},
+      folders: {
+        f1: {
+          id: 'f1',
+          ownerType: 'home',
+          ownerId: undefined,
+          name: 'Phase 1',
+          color: 'blue',
+          description: 'folder desc',
+          priority: 'med',
+          dueDate: '2026-09-01',
+          tagIds: ['t1'],
+          links: [{ id: 'l2', label: 'Spec', url: 'https://example.com/spec' }],
+          attachments: [],
+          columnId: 'home1',
+          taskIds: [],
+          createdAt: 1200,
+          updatedAt: 2200,
+        },
+      },
     }
 
     saveState(state)
@@ -119,6 +136,7 @@ describe('loadState', () => {
     expect(loaded.cards.card1).toEqual(state.cards.card1)
     expect(loaded.columns.c1).toEqual(state.columns.c1)
     expect(loaded.tags.t1).toEqual(state.tags.t1)
+    expect(loaded.folders.f1).toEqual(state.folders.f1)
   })
 
   it('skips rows with no id', () => {
@@ -147,8 +165,8 @@ describe('loadState', () => {
   it('falls back to an empty array when a JSON-encoded cell is malformed', () => {
     writeCsv(
       'cards.csv',
-      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,checklist,createdAt,updatedAt\r\n' +
-        'card1,,,col1,Task,,,,,not valid json,[],[],1000,1000\r\n',
+      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,createdAt,updatedAt\r\n' +
+        'card1,,,col1,Task,,,,,not valid json,[],1000,1000\r\n',
     )
     for (const file of ['projects.csv', 'columns.csv', 'tags.csv', 'folders.csv']) {
       writeCsv(file, '')
@@ -183,8 +201,8 @@ describe('loadState', () => {
     )
     writeCsv(
       'cards.csv',
-      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,checklist,createdAt,updatedAt\r\n' +
-        'card1,,,folder-sub-todo,Filed task,,,,,[],[],[],1000,1000\r\n',
+      'id,projectId,folderId,columnId,title,summary,priority,dueDate,tagIds,links,attachments,createdAt,updatedAt\r\n' +
+        'card1,,,folder-sub-todo,Filed task,,,,,[],[],1000,1000\r\n',
     )
     writeCsv('projects.csv', '')
     writeCsv('tags.csv', '')
