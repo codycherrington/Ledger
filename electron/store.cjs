@@ -8,7 +8,10 @@ const { encodeCsv, parseCsv } = require('./csv.cjs')
 // this one machine and project folder, not a distributable package, so the
 // data directory lives in the repo (`data/`) rather than under the installed
 // app's own bundle path (which would point into /Applications, not here).
-const DATA_DIR = path.join('/Users/codycherrington/Documents/Development/Projects/tasktray', 'data')
+// TASKTRAY_DATA_DIR is never set outside the test suite (see tests/electron/store.test.ts)
+// — it exists solely so tests can point this module at a disposable temp dir
+// instead of the user's real, irreplaceable task data.
+const DATA_DIR = process.env.TASKTRAY_DATA_DIR || path.join('/Users/codycherrington/Documents/Development/Projects/tasktray', 'data')
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments')
 
 function ensureDirs() {

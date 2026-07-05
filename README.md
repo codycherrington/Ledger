@@ -52,9 +52,13 @@ This starts the Vite dev server and opens an Electron window pointed at it — h
 ```bash
 npm run build   # tsc -b && vite build — typecheck + build the frontend only, no Electron packaging
 npm run lint    # oxlint
+npm test        # run the unit test suite (see TESTING.md)
 ```
 
-There's no automated test suite for this app; `npm run dev` against real data is the actual verification loop.
+The unit test suite covers business logic (the board store, CSV
+persistence) — see [`TESTING.md`](./TESTING.md) for scope and how it's run.
+For UI changes, `npm run dev` against real data is still the verification
+loop; there's no browser fallback to spot-check in.
 
 ## Data storage
 
