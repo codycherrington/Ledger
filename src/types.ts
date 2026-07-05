@@ -15,12 +15,6 @@ export interface AttachmentMeta {
   size: number
 }
 
-export interface ChecklistItem {
-  id: string
-  text: string
-  done: boolean
-}
-
 export interface Card {
   id: string
   projectId?: string // undefined for standalone/home-level tasks not inside any project
@@ -35,7 +29,6 @@ export interface Card {
   tagIds: string[]
   links: ResourceLink[]
   attachments: AttachmentMeta[]
-  checklist: ChecklistItem[]
   createdAt: number
   updatedAt: number
 }
@@ -76,6 +69,11 @@ export interface Folder {
   name: string
   color: string
   description?: string
+  priority?: Priority
+  dueDate?: string // ISO date string (yyyy-MM-dd)
+  tagIds: string[]
+  links: ResourceLink[]
+  attachments: AttachmentMeta[]
   columnId: string // which column of the owner board this folder sits in
   taskIds: string[] // ordered ids of tasks filed into this folder (flat list, no sub-status)
   createdAt: number

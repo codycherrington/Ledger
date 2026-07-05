@@ -6,9 +6,9 @@ A local-only Kanban and task manager for the Mac desktop. No account, no server,
 
 - **Home board** — a top-level Kanban/table board where Projects, Folders, and standalone Tasks all sit as cards you can drag between statuses (To Do / In Progress / Done / Nullspace).
 - **Projects** — each gets its own board with the same four fixed statuses, plus a details view for a description, links, and file attachments.
-- **Folders** — group related tasks (e.g. a project phase) without giving up per-task status. A folder expands in place on the board; drag tasks in or out, or add new ones directly inside it. A task filed in a folder shows its status as a small colored pill.
+- **Folders** — group related tasks (e.g. a project phase) without giving up per-task status. A folder expands in place (in both Kanban and Table view) via its arrow, sorted by status then priority; clicking its name opens the folder's own page. A task filed in a folder shows its status as a small colored pill. Folders carry the same tags, priority, due date, links, and attachments a task does.
 - **Table view** — toggle any board to a sortable, filterable spreadsheet-style list (title, category, priority, due date, status), with inline editing.
-- **Tags, priority, due dates, checklists, links, attachments** — tags are a single global pool usable on any task, project-scoped or not.
+- **Tags, priority, due dates, links, attachments** — tags are a single global pool usable on any task or folder, project-scoped or not.
 - **Filter popover** — search plus priority/tag filters tucked behind one "Filter" button instead of a permanent row.
 - **Save status light** — a persistent dot in the header glows green when everything's saved, amber while saving, and red on failure; hover the red light for the actual error and a button to copy it.
 

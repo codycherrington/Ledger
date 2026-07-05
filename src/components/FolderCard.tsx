@@ -3,14 +3,26 @@ import { useNavigate } from 'react-router-dom'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useShallow } from 'zustand/react/shallow'
-import { COLOR_CLASSES, COLOR_NAMES, type ColorName } from '../lib/colors'
+import { COLOR_CLASSES, COLOR_NAMES, PRIORITY_COLOR, type ColorName } from '../lib/colors'
+import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { useSortableItem } from '../lib/useSortableItem'
-import { selectFolderTasks, useBoardStore } from '../store/board'
+import {
+  selectAllTags,
+  selectFolderTasks,
+  selectOwnerColumns,
+  sortFolderTasksForDisplay,
+  useBoardStore,
+} from '../store/board'
 import Modal from './Modal'
 import ItemTypeBadge from './ItemTypeBadge'
 import Card from './Card'
-import { BoardGlyph, ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
-import type { Folder } from '../types'
+import LinksEditor from './LinksEditor'
+import AttachmentsEditor from './AttachmentsEditor'
+import TagPicker from './TagPicker'
+import { ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
+import type { Folder, Priority } from '../types'
+
+const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', high: 'High' }
 
 interface FolderCardProps {
   folder: Folder
@@ -23,6 +35,8 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const colorClasses = COLOR_CLASSES[folder.color as ColorName] ?? COLOR_CLASSES.slate
+  const allTags = useBoardStore(useShallow(selectAllTags))
+  const folderTags = allTags.filter((t) => folder.tagIds.includes(t.id))
 
   return (
     <>
@@ -52,17 +66,6 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
           >
             <InfoIcon className="h-3.5 w-3.5" />
           </button>
-          <button
-            type="button"
-            aria-label="Open folder board"
-            onClick={(e) => {
-              e.stopPropagation()
-              navigate(`/folder/${folder.id}`)
-            }}
-            className="icon-btn float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
-          >
-            <BoardGlyph className="h-3.5 w-3.5" />
-          </button>
           <ItemTypeBadge kind="folder" />
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
             <button
@@ -91,6 +94,38 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
             </span>
           </div>
           {folder.description && <p className="mt-1.5 line-clamp-2 text-xs text-slate-400">{folder.description}</p>}
+          {(folder.priority || folder.dueDate || folderTags.length > 0) && (
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {folder.priority && (
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${COLOR_CLASSES[PRIORITY_COLOR[folder.priority]].bgSoft} ${COLOR_CLASSES[PRIORITY_COLOR[folder.priority]].text}`}
+                >
+                  {PRIORITY_LABEL[folder.priority]}
+                </span>
+              )}
+              {folder.dueDate && (
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${
+                    isOverdue(folder.dueDate)
+                      ? 'bg-rose-400/10 text-rose-300'
+                      : isDueToday(folder.dueDate)
+                        ? 'bg-amber-400/10 text-amber-300'
+                        : 'bg-white/[0.06] text-slate-400'
+                  }`}
+                >
+                  {formatDueDate(folder.dueDate)}
+                </span>
+              )}
+              {folderTags.map((tag) => {
+                const cls = COLOR_CLASSES[tag.color as ColorName] ?? COLOR_CLASSES.slate
+                return (
+                  <span key={tag.id} className={`rounded-md px-1.5 py-0.5 text-[11px] font-medium ${cls.bgSoft} ${cls.text}`}>
+                    {tag.name}
+                  </span>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {expanded && <FolderTaskList folder={folder} onOpenCard={onOpenCard} />}
@@ -102,7 +137,9 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
 }
 
 function FolderTaskList({ folder, onOpenCard }: { folder: Folder; onOpenCard: (cardId: string) => void }) {
-  const tasks = useBoardStore(useShallow((s) => selectFolderTasks(s, folder.id)))
+  const rawTasks = useBoardStore(useShallow((s) => selectFolderTasks(s, folder.id)))
+  const ownerColumns = useBoardStore(useShallow((s) => selectOwnerColumns(s, folder.ownerType, folder.ownerId)))
+  const tasks = sortFolderTasksForDisplay(rawTasks, ownerColumns)
   const createCardInFolder = useBoardStore((s) => s.createCardInFolder)
   const { setNodeRef: setDropRef } = useDroppable({
     id: `folder-drop:${folder.id}`,
@@ -170,9 +207,17 @@ function FolderFormModal({
 }) {
   const updateFolder = useBoardStore((s) => s.updateFolder)
   const deleteFolder = useBoardStore((s) => s.deleteFolder)
+  const toggleFolderTag = useBoardStore((s) => s.toggleFolderTag)
+  const addFolderLink = useBoardStore((s) => s.addFolderLink)
+  const updateFolderLink = useBoardStore((s) => s.updateFolderLink)
+  const removeFolderLink = useBoardStore((s) => s.removeFolderLink)
+  const addFolderAttachment = useBoardStore((s) => s.addFolderAttachment)
+  const removeFolderAttachment = useBoardStore((s) => s.removeFolderAttachment)
   const [name, setName] = useState(folder.name)
   const [description, setDescription] = useState(folder.description ?? '')
   const [color, setColor] = useState<ColorName>((folder.color as ColorName) ?? 'slate')
+  const [priority, setPriority] = useState<Priority | undefined>(folder.priority)
+  const [dueDate, setDueDate] = useState(folder.dueDate ?? '')
 
   function handleDelete() {
     if (window.confirm(`Delete "${folder.name}"? Its tasks will move back to the board.`)) {
@@ -190,6 +235,8 @@ function FolderFormModal({
           setName(folder.name)
           setDescription(folder.description ?? '')
           setColor((folder.color as ColorName) ?? 'slate')
+          setPriority(folder.priority)
+          setDueDate(folder.dueDate ?? '')
         }
       }}
       title="Edit Folder"
@@ -198,7 +245,13 @@ function FolderFormModal({
         onSubmit={(e) => {
           e.preventDefault()
           if (!name.trim()) return
-          updateFolder(folder.id, { name: name.trim(), description: description.trim() || undefined, color })
+          updateFolder(folder.id, {
+            name: name.trim(),
+            description: description.trim() || undefined,
+            color,
+            priority,
+            dueDate: dueDate || undefined,
+          })
           onOpenChange(false)
         }}
       >
@@ -217,6 +270,36 @@ function FolderFormModal({
           rows={3}
           className="input mt-1.5 resize-none"
         />
+        <div className="mt-4 grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Priority</label>
+            <div className="mt-1.5 flex gap-1.5">
+              {(['low', 'med', 'high'] as Priority[]).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setPriority(priority === p ? undefined : p)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                    priority === p
+                      ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
+                      : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                  }`}
+                >
+                  {PRIORITY_LABEL[p]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300">Due date</label>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="input mt-1.5 w-auto px-2.5 py-1.5 [color-scheme:dark]"
+            />
+          </div>
+        </div>
         <label className="mt-4 block text-sm font-medium text-slate-300">Color</label>
         <div className="mt-1.5 flex flex-wrap gap-1.5">
           {COLOR_NAMES.map((c) => (
@@ -240,6 +323,37 @@ function FolderFormModal({
           </button>
         </div>
       </form>
+
+      <div className="mt-5 border-t border-white/[0.06] pt-4">
+        <label className="block text-sm font-medium text-slate-300">Tags</label>
+        <div className="mt-1.5">
+          <TagPicker activeTagIds={folder.tagIds} onToggle={(tagId) => toggleFolderTag(folder.id, tagId)} />
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-white/[0.06] pt-4">
+        <label className="block text-sm font-medium text-slate-300">Resources</label>
+        <div className="mt-1.5">
+          <LinksEditor
+            links={folder.links}
+            onAdd={(label, url) => addFolderLink(folder.id, label, url)}
+            onUpdate={(linkId, patch) => updateFolderLink(folder.id, linkId, patch)}
+            onRemove={(linkId) => removeFolderLink(folder.id, linkId)}
+          />
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-white/[0.06] pt-4">
+        <label className="block text-sm font-medium text-slate-300">Attachments</label>
+        <div className="mt-1.5">
+          <AttachmentsEditor
+            attachments={folder.attachments}
+            onAdd={(file) => addFolderAttachment(folder.id, file)}
+            onRemove={(attachmentId) => removeFolderAttachment(folder.id, attachmentId)}
+          />
+        </div>
+      </div>
+
       <div className="mt-5 border-t border-white/[0.06] pt-4">
         <button type="button" onClick={handleDelete} className="btn-danger-link">
           Delete folder
