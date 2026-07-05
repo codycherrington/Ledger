@@ -4,13 +4,15 @@ import { useShallow } from 'zustand/react/shallow'
 import { COLOR_CLASSES, PRIORITY_COLOR, STATUS_COLOR } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { boardItemId, boardItemTitle, selectAllTags, useBoardStore } from '../store/board'
-import type { BoardItem, Column, Priority } from '../types'
+import { ChevronIcon } from './icons'
+import type { BoardItem, Card, Column, Priority } from '../types'
 
 const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', high: 'High' }
 const PRIORITY_RANK: Record<Priority, number> = { low: 0, med: 1, high: 2 }
 const TYPE_LABEL: Record<BoardItem['kind'], string> = { task: 'Task', project: 'Project', folder: 'Folder' }
 
 type SortKey = 'title' | 'priority' | 'dueDate' | 'status'
+type Row = { kind: 'item'; item: BoardItem; nested: boolean } | { kind: 'empty-folder'; folderId: string }
 
 interface TableViewProps {
   items: BoardItem[]
@@ -24,8 +26,10 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
   const navigate = useNavigate()
   const tags = useBoardStore(useShallow(selectAllTags))
   const updateCard = useBoardStore((s) => s.updateCard)
+  const cardsById = useBoardStore((s) => s.cards)
   const [sortKey, setSortKey] = useState<SortKey>('status')
   const [sortDir, setSortDir] = useState<1 | -1>(1)
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   const columnNameById = useMemo(() => new Map(columns.map((c) => [c.id, c.name])), [columns])
   const columnIndexById = useMemo(() => new Map(columns.map((c, i) => [c.id, i])), [columns])
@@ -55,9 +59,23 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
   function openItem(item: BoardItem) {
     if (item.kind === 'task') onOpenCard(item.card.id)
     else if (item.kind === 'project') navigate(`/project/${item.project.id}`)
-    // A folder row in a board-level table view doesn't navigate anywhere —
-    // open one via FolderCard's "Open folder board" button (/folder/:id) or
-    // its inline expand instead.
+  }
+
+  // Mirrors FolderCard's arrow-vs-title split: the arrow expands the
+  // folder's tasks inline (right below its row, same idea as the Kanban
+  // dropdown), the title opens the folder's own page — in whatever the
+  // current global board/table view is, same as every other navigation.
+  function toggleFolderExpanded(folderId: string) {
+    setExpandedFolders((prev) => {
+      const next = new Set(prev)
+      if (next.has(folderId)) next.delete(folderId)
+      else next.add(folderId)
+      return next
+    })
+  }
+
+  function openFolder(folderId: string) {
+    navigate(`/folder/${folderId}`)
   }
 
   const sorted = useMemo(() => {
@@ -86,6 +104,25 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
     return rows
   }, [items, sortKey, sortDir, columnIndexById])
 
+  // Folder children render as extra rows directly under their parent,
+  // outside the sort above — same as the Kanban dropdown, which always shows
+  // a folder's own tasks in their own order regardless of board sort/filter.
+  const rows = useMemo(() => {
+    const out: Row[] = []
+    for (const item of sorted) {
+      out.push({ kind: 'item', item, nested: false })
+      if (item.kind === 'folder' && expandedFolders.has(item.folder.id)) {
+        const tasks = item.folder.taskIds.map((cid) => cardsById[cid]).filter((c): c is Card => Boolean(c))
+        if (tasks.length === 0) {
+          out.push({ kind: 'empty-folder', folderId: item.folder.id })
+        } else {
+          for (const card of tasks) out.push({ kind: 'item', item: { kind: 'task', card }, nested: true })
+        }
+      }
+    }
+    return out
+  }, [sorted, expandedFolders, cardsById])
+
   const colSpan = showTypeColumn ? 6 : 5
 
   return (
@@ -108,21 +145,57 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
           </tr>
         </thead>
         <tbody>
-          {sorted.map((item) => {
+          {rows.map((row) => {
+            if (row.kind === 'empty-folder') {
+              return (
+                <tr key={`empty:${row.folderId}`}>
+                  <td colSpan={colSpan} className="border-b border-white/[0.04] px-3 py-2 pl-8 text-xs text-slate-600">
+                    No tasks in this folder.
+                  </td>
+                </tr>
+              )
+            }
+            const { item, nested } = row
             const id = boardItemId(item)
             const priority = priorityOf(item)
             const dueDate = dueDateOf(item)
             const columnId = columnIdOf(item)
             const tagIds = item.kind === 'task' ? item.card.tagIds : []
+            const isExpanded = item.kind === 'folder' && expandedFolders.has(item.folder.id)
             return (
-              <tr key={id} className="group">
+              <tr key={`${nested ? 'nested:' : ''}${id}`} className="group">
                 <td
-                  onClick={item.kind !== 'folder' ? () => openItem(item) : undefined}
+                  onClick={item.kind === 'task' || item.kind === 'project' ? () => openItem(item) : undefined}
                   className={`border-b border-white/[0.04] px-3 py-2.5 text-slate-100 group-hover:bg-white/[0.02] ${
-                    item.kind !== 'folder' ? 'cursor-pointer' : ''
-                  }`}
+                    item.kind === 'task' || item.kind === 'project' ? 'cursor-pointer' : ''
+                  } ${nested ? 'pl-8 text-slate-300' : ''}`}
                 >
-                  {boardItemTitle(item)}
+                  {item.kind === 'folder' ? (
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        aria-label={isExpanded ? 'Collapse folder' : 'Expand folder'}
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          toggleFolderExpanded(item.folder.id)
+                        }}
+                        className="-m-1.5 shrink-0 p-1.5"
+                      >
+                        <ChevronIcon className={`h-3 w-3 text-slate-500 transition ${isExpanded ? 'rotate-90' : ''}`} />
+                      </button>
+                      <span
+                        onClick={() => openFolder(item.folder.id)}
+                        className="cursor-pointer transition hover:text-white hover:underline"
+                      >
+                        {item.folder.name}
+                      </span>
+                      <span className="rounded-full bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-slate-500">
+                        {item.folder.taskIds.length}
+                      </span>
+                    </div>
+                  ) : (
+                    boardItemTitle(item)
+                  )}
                 </td>
                 {showTypeColumn && (
                   <td className="border-b border-white/[0.04] px-3 py-2.5 text-xs font-medium text-slate-400 group-hover:bg-white/[0.02]">
