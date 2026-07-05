@@ -3,8 +3,9 @@ import { useShallow } from 'zustand/react/shallow'
 import Modal from './Modal'
 import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
-import { COLOR_CLASSES, COLOR_NAMES, STATUS_COLOR, type ColorName } from '../lib/colors'
-import { selectAllTags, selectOwnerColumns, useBoardStore } from '../store/board'
+import TagPicker from './TagPicker'
+import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
+import { selectOwnerColumns, useBoardStore } from '../store/board'
 import type { Card as CardType, Priority } from '../types'
 
 const PRIORITIES: { value: Priority; label: string }[] = [
@@ -22,6 +23,7 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
   const card = useBoardStore((s) => s.cards[cardId])
   const updateCard = useBoardStore((s) => s.updateCard)
   const deleteCard = useBoardStore((s) => s.deleteCard)
+  const toggleCardTag = useBoardStore((s) => s.toggleCardTag)
 
   const [title, setTitle] = useState(card?.title ?? '')
   const [summary, setSummary] = useState(card?.summary ?? '')
@@ -104,11 +106,7 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
       </Field>
 
       <Field label="Tags" className="mt-5">
-        <TagSection card={card} />
-      </Field>
-
-      <Field label="Checklist" className="mt-5">
-        <ChecklistSection card={card} />
+        <TagPicker activeTagIds={card.tagIds} onToggle={(tagId) => toggleCardTag(card.id, tagId)} />
       </Field>
 
       <Field label="Resources" className="mt-5">
@@ -175,170 +173,6 @@ function StatusSection({ card }: { card: CardType }) {
           </button>
         )
       })}
-    </div>
-  )
-}
-
-function TagSection({ card }: { card: CardType }) {
-  const tags = useBoardStore(useShallow(selectAllTags))
-  const toggleCardTag = useBoardStore((s) => s.toggleCardTag)
-  const createTag = useBoardStore((s) => s.createTag)
-  const deleteTag = useBoardStore((s) => s.deleteTag)
-  const [adding, setAdding] = useState(false)
-  const [name, setName] = useState('')
-  const [color, setColor] = useState<ColorName>('blue')
-
-  return (
-    <div>
-      <div className="flex flex-wrap items-center gap-1.5">
-        {tags.map((tag) => {
-          const active = card.tagIds.includes(tag.id)
-          const cls = COLOR_CLASSES[tag.color as ColorName] ?? COLOR_CLASSES.slate
-          return (
-            <span
-              key={tag.id}
-              className={`group inline-flex items-center rounded-full border transition ${
-                active
-                  ? `${cls.bgSoft} ${cls.text} ${cls.border}`
-                  : 'border-white/10 text-slate-500 hover:border-white/20 hover:text-slate-300'
-              }`}
-            >
-              <button
-                type="button"
-                onClick={() => toggleCardTag(card.id, tag.id)}
-                className="py-1 pr-1 pl-2.5 text-xs font-medium"
-              >
-                {tag.name}
-              </button>
-              {/* Tags are global now — deleting one affects every task, so it's
-                  tucked behind hover and a confirm rather than a plain click. */}
-              <button
-                type="button"
-                aria-label={`Delete ${tag.name} tag`}
-                onClick={() => {
-                  if (window.confirm(`Delete the "${tag.name}" tag? It will be removed from every task.`)) deleteTag(tag.id)
-                }}
-                className="pr-2 pl-0.5 text-sm leading-none opacity-0 transition group-hover:opacity-100 hover:text-rose-400"
-              >
-                ×
-              </button>
-            </span>
-          )
-        })}
-        <button
-          type="button"
-          onClick={() => setAdding((v) => !v)}
-          className="rounded-full border border-dashed border-white/15 px-2.5 py-1 text-xs font-medium text-slate-500 transition hover:border-white/30 hover:text-slate-300"
-        >
-          + New tag
-        </button>
-      </div>
-      {adding && (
-        <div className="mt-3 flex flex-wrap items-center gap-2.5">
-          <input
-            autoFocus
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Tag name"
-            className="input w-40 px-2.5 py-1.5"
-          />
-          <div className="flex gap-1.5">
-            {COLOR_NAMES.slice(0, 8).map((c) => (
-              <button
-                key={c}
-                type="button"
-                aria-label={c}
-                onClick={() => setColor(c)}
-                className={`h-5 w-5 rounded-full transition ${COLOR_CLASSES[c].dot} ${
-                  color === c ? 'ring-2 ring-white/80 ring-offset-2 ring-offset-panel' : 'hover:scale-110'
-                }`}
-              />
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!name.trim()) return
-              const id = createTag(name.trim(), color)
-              toggleCardTag(card.id, id)
-              setName('')
-              setAdding(false)
-            }}
-            className="btn-primary px-2.5 py-1.5 text-xs"
-          >
-            Add
-          </button>
-        </div>
-      )}
-    </div>
-  )
-}
-
-function ChecklistSection({ card }: { card: CardType }) {
-  const addItem = useBoardStore((s) => s.addChecklistItem)
-  const toggleItem = useBoardStore((s) => s.toggleChecklistItem)
-  const removeItem = useBoardStore((s) => s.removeChecklistItem)
-  const [text, setText] = useState('')
-
-  const done = card.checklist.filter((i) => i.done).length
-  const total = card.checklist.length
-
-  return (
-    <div>
-      {total > 0 && (
-        <div className="mb-3">
-          <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/[0.06]">
-            <div
-              className="h-full rounded-full bg-emerald-400 transition-all"
-              style={{ width: `${(done / total) * 100}%` }}
-            />
-          </div>
-          <p className="mt-1.5 text-xs text-slate-500">
-            {done}/{total} complete
-          </p>
-        </div>
-      )}
-      <div className="space-y-1.5">
-        {card.checklist.map((item) => (
-          <div key={item.id} className="group flex items-center gap-2.5">
-            <input
-              type="checkbox"
-              checked={item.done}
-              onChange={() => toggleItem(card.id, item.id)}
-              className="h-4 w-4 rounded accent-indigo-500"
-            />
-            <span className={`flex-1 text-sm ${item.done ? 'text-slate-500 line-through' : 'text-slate-200'}`}>
-              {item.text}
-            </span>
-            <button
-              type="button"
-              onClick={() => removeItem(card.id, item.id)}
-              className="btn-danger-link opacity-0 transition group-hover:opacity-100"
-            >
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!text.trim()) return
-          addItem(card.id, text.trim())
-          setText('')
-        }}
-        className="mt-2.5 flex gap-2"
-      >
-        <input
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder="Add checklist item"
-          className="input flex-1 px-2.5 py-1.5"
-        />
-        <button type="submit" className="btn-primary px-2.5 py-1.5 text-xs">
-          Add
-        </button>
-      </form>
     </div>
   )
 }

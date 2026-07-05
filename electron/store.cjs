@@ -34,8 +34,8 @@ function ensureDirs() {
 }
 
 // Serialization helpers. List-of-id fields are joined with ";" (nanoid's
-// alphabet never contains ";"). Nested structures (links, checklist,
-// attachment metadata) are stored as JSON inside a CSV cell.
+// alphabet never contains ";"). Nested structures (links, attachment
+// metadata) are stored as JSON inside a CSV cell.
 const joinIds = (ids) => (ids ?? []).join(';')
 const splitIds = (str) => (str ? str.split(';') : [])
 const toJson = (value) => JSON.stringify(value ?? [])
@@ -114,7 +114,6 @@ const TABLES = {
       'tagIds',
       'links',
       'attachments',
-      'checklist',
       'createdAt',
       'updatedAt',
     ],
@@ -130,7 +129,6 @@ const TABLES = {
       tagIds: joinIds(c.tagIds),
       links: toJson(c.links),
       attachments: toJson(c.attachments),
-      checklist: toJson(c.checklist),
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
     }),
@@ -146,7 +144,6 @@ const TABLES = {
       tagIds: splitIds(r.tagIds),
       links: fromJson(r.links, []),
       attachments: fromJson(r.attachments, []),
-      checklist: fromJson(r.checklist, []),
       createdAt: Number(r.createdAt),
       updatedAt: Number(r.updatedAt),
     }),
@@ -162,7 +159,23 @@ const TABLES = {
     file: 'folders.csv',
     // Folders are a flat grouping of tasks now, not their own board — taskIds
     // replaces the old columnOrder (which listed the folder's own 4 columns).
-    headers: ['id', 'ownerType', 'ownerId', 'name', 'color', 'description', 'columnId', 'taskIds', 'createdAt', 'updatedAt'],
+    headers: [
+      'id',
+      'ownerType',
+      'ownerId',
+      'name',
+      'color',
+      'description',
+      'priority',
+      'dueDate',
+      'tagIds',
+      'links',
+      'attachments',
+      'columnId',
+      'taskIds',
+      'createdAt',
+      'updatedAt',
+    ],
     toRow: (f) => ({
       id: f.id,
       ownerType: f.ownerType,
@@ -170,6 +183,11 @@ const TABLES = {
       name: f.name,
       color: f.color,
       description: f.description ?? '',
+      priority: f.priority ?? '',
+      dueDate: f.dueDate ?? '',
+      tagIds: joinIds(f.tagIds),
+      links: toJson(f.links),
+      attachments: toJson(f.attachments),
       columnId: f.columnId,
       taskIds: joinIds(f.taskIds),
       createdAt: f.createdAt,
@@ -182,6 +200,13 @@ const TABLES = {
       name: r.name,
       color: r.color,
       description: orUndefined(r.description),
+      // Legacy rows predate these fields and simply have no column for them —
+      // orUndefined/splitIds/fromJson all treat the resulting '' as empty.
+      priority: orUndefined(r.priority),
+      dueDate: orUndefined(r.dueDate),
+      tagIds: splitIds(r.tagIds),
+      links: fromJson(r.links, []),
+      attachments: fromJson(r.attachments, []),
       columnId: r.columnId,
       // Legacy rows predate the flat-list model and carried columnOrder
       // (their own 4 sub-columns) instead — those rows have no valid

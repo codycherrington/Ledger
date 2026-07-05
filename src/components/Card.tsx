@@ -4,7 +4,7 @@ import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { useSortableItem } from '../lib/useSortableItem'
 import { selectAllTags, useBoardStore } from '../store/board'
-import { AttachmentIcon, ChecklistIcon, InfoIcon, LinkIcon } from './icons'
+import { AttachmentIcon, InfoIcon, LinkIcon } from './icons'
 
 const PRIORITY_CLASSES: Record<NonNullable<CardType['priority']>, string> = {
   low: 'bg-white/[0.06] text-slate-400',
@@ -24,9 +24,6 @@ export function CardBody({ card }: { card: CardType }) {
   // Filed tasks aren't rendered in any column, so their status isn't visible
   // from placement alone — show it as a pill instead.
   const statusName = useBoardStore((s) => (card.folderId ? s.columns[card.columnId]?.name : undefined))
-
-  const checklistTotal = card.checklist.length
-  const checklistDone = card.checklist.filter((c) => c.done).length
 
   return (
     <>
@@ -73,14 +70,8 @@ export function CardBody({ card }: { card: CardType }) {
         </div>
       )}
 
-      {(checklistTotal > 0 || card.attachments.length > 0 || card.links.length > 0) && (
+      {(card.attachments.length > 0 || card.links.length > 0) && (
         <div className="mt-2.5 flex items-center gap-3 text-[11px] text-slate-500">
-          {checklistTotal > 0 && (
-            <span className={`flex items-center gap-1 ${checklistDone === checklistTotal ? 'text-emerald-400' : ''}`}>
-              <ChecklistIcon />
-              {checklistDone}/{checklistTotal}
-            </span>
-          )}
           {card.attachments.length > 0 && (
             <span className="flex items-center gap-1">
               <AttachmentIcon />

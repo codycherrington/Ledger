@@ -2,15 +2,6 @@ interface IconProps {
   className?: string
 }
 
-export function ChecklistIcon({ className = 'h-3 w-3' }: IconProps) {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
-      <rect x="3" y="3" width="18" height="18" rx="2" />
-      <path d="m8 12 3 3 5-6" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}
-
 export function AttachmentIcon({ className = 'h-3 w-3' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>

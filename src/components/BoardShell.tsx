@@ -93,8 +93,11 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   function matchesFilters(item: BoardItem): boolean {
     const title = item.kind === 'task' ? item.card.title : item.kind === 'project' ? item.project.name : item.folder.name
     if (search && !title.toLowerCase().includes(search.toLowerCase())) return false
-    if (priorityFilter && (item.kind !== 'task' || item.card.priority !== priorityFilter)) return false
-    if (tagFilter.length > 0 && (item.kind !== 'task' || !tagFilter.every((t) => item.card.tagIds.includes(t)))) return false
+    if (item.kind === 'project') return !priorityFilter && tagFilter.length === 0
+    const priority = item.kind === 'task' ? item.card.priority : item.folder.priority
+    const tagIds = item.kind === 'task' ? item.card.tagIds : item.folder.tagIds
+    if (priorityFilter && priority !== priorityFilter) return false
+    if (tagFilter.length > 0 && !tagFilter.every((t) => tagIds.includes(t))) return false
     return true
   }
 
@@ -170,15 +173,9 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
 
   const showTypeColumn = ownerType === 'home'
-  // Table view needs every task, including ones filed inside a folder — those
-  // aren't in any column's cardOrder, so itemsForColumn alone would miss them.
-  // Pull them in separately via each visible folder's own taskIds.
-  const columnItems = columns.flatMap((c) => itemsForColumn(c.id))
-  const folderTaskItems = columnItems
-    .filter((item): item is Extract<BoardItem, { kind: 'folder' }> => item.kind === 'folder')
-    .flatMap((item) => item.folder.taskIds.map((id) => resolveItem(derivedState, id)))
-    .filter((item): item is BoardItem => Boolean(item))
-  const allItems = [...columnItems, ...folderTaskItems]
+  // TableView pulls a folder's own children in itself (gated on which
+  // folders are expanded) — nothing here needs to pre-flatten them too.
+  const allItems = columns.flatMap((c) => itemsForColumn(c.id))
 
   return (
     <div className="flex h-screen flex-col">
