@@ -1,18 +1,33 @@
 'use strict'
 
 const fs = require('node:fs')
+const os = require('node:os')
 const path = require('node:path')
 const { encodeCsv, parseCsv } = require('./csv.cjs')
 
-// Hardcoded to this checkout: TaskTray is a local-only, unshipped app tied to
-// this one machine and project folder, not a distributable package, so the
-// data directory lives in the repo (`data/`) rather than under the installed
-// app's own bundle path (which would point into /Applications, not here).
-// TASKTRAY_DATA_DIR is never set outside the test suite (see tests/electron/store.test.ts)
-// — it exists solely so tests can point this module at a disposable temp dir
-// instead of the user's real, irreplaceable task data.
-const DATA_DIR = process.env.TASKTRAY_DATA_DIR || path.join('/Users/codycherrington/Documents/Development/Projects/tasktray', 'data')
+// Portable per-user location, same for the dev server and any built/installed
+// copy of the app: ~/Library/Application Support/tasktray (this app's only
+// supported platform is macOS). Deliberately not derived from Electron's
+// app.getPath('userData') — that resolves differently for `npm run dev`
+// (app name "tasktray", from package.json's `name`) vs. an electron-builder
+// package (app name "TaskTray", from `build.productName`), which would break
+// the dev server and the installed app sharing one data folder. Computing it
+// by hand with plain `os.homedir()` also means this module needs no Electron
+// runtime, which is what lets it be required directly under plain Node in
+// the test suite. TASKTRAY_DATA_DIR overrides this — set only by
+// tests/electron/store.test.ts, to point at a disposable temp dir instead of
+// a real location; never set when actually running the app.
+const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'tasktray')
+const DATA_DIR = process.env.TASKTRAY_DATA_DIR || DEFAULT_DATA_DIR
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments')
+
+// Checkouts before this file became portable hardcoded DATA_DIR to one
+// specific machine's home directory and project folder. TASKTRAY_LEGACY_DATA_DIR
+// overrides this for testing only; in real usage it's always this fixed
+// path, so migrateFromLegacyLocation() below only ever reads from the one
+// real legacy location that could actually exist on this machine.
+const LEGACY_DATA_DIR =
+  process.env.TASKTRAY_LEGACY_DATA_DIR || '/Users/codycherrington/Documents/Development/Projects/tasktray/data'
 
 function ensureDirs() {
   fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true })
@@ -233,7 +248,26 @@ function migrateLegacyFolderColumns(state) {
   return changed
 }
 
+function hasAnyDataFile(dir) {
+  return Object.values(TABLES).some((table) => fs.existsSync(path.join(dir, table.file)))
+}
+
+// One-time migration for anyone whose data still sits at the old hardcoded
+// path: if the portable location has no data yet but the legacy one does,
+// copy (never move — the legacy folder is left in place as a backup) its
+// CSVs and attachments over.
+function migrateFromLegacyLocation() {
+  if (hasAnyDataFile(DATA_DIR)) return
+  if (!fs.existsSync(LEGACY_DATA_DIR) || !hasAnyDataFile(LEGACY_DATA_DIR)) return
+  fs.mkdirSync(DATA_DIR, { recursive: true })
+  for (const entry of fs.readdirSync(LEGACY_DATA_DIR)) {
+    fs.cpSync(path.join(LEGACY_DATA_DIR, entry), path.join(DATA_DIR, entry), { recursive: true })
+  }
+}
+
 function loadState() {
+  migrateFromLegacyLocation()
+
   const state = {}
   let anyFileFound = false
   for (const [key, table] of Object.entries(TABLES)) {

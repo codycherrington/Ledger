@@ -12,7 +12,7 @@ A local-only Kanban and task manager for the Mac desktop. No account, no server,
 - **Filter popover** — search plus priority/tag filters tucked behind one "Filter" button instead of a permanent row.
 - **Save indicator** — a small "Saving…" / "Saved" status in the header confirms every change actually landed on disk.
 
-Everything is stored as CSVs in `data/` inside this project folder (git-ignored — see [Data storage](#data-storage) below). In the app, **File → Open Data Folder** (⌘⇧O) jumps straight there.
+Everything is stored as CSVs under `~/Library/Application Support/tasktray/` (see [Data storage](#data-storage) below). In the app, **File → Open Data Folder** (⌘⇧O) jumps straight there.
 
 ## Requirements
 
@@ -45,7 +45,7 @@ To build without installing (e.g. to inspect the bundle), use `npm run app:build
 npm run dev
 ```
 
-This starts the Vite dev server and opens an Electron window pointed at it — hot reload on every save in `src/`, working against your real CSV data in `data/`. There is no browser fallback: opening the Vite URL directly in a browser tab won't work, since persistence goes through an Electron-only bridge (`window.boardFS`).
+This starts the Vite dev server and opens an Electron window pointed at it — hot reload on every save in `src/`, working against your real CSV data under `~/Library/Application Support/tasktray/`. There is no browser fallback: opening the Vite URL directly in a browser tab won't work, since persistence goes through an Electron-only bridge (`window.boardFS`).
 
 ## Other commands
 
@@ -62,10 +62,11 @@ loop; there's no browser fallback to spot-check in.
 
 ## Data storage
 
-- `data/projects.csv`, `columns.csv`, `cards.csv`, `tags.csv`, `folders.csv` — one CSV per table, plain text, safe to open in a spreadsheet app or text editor.
-- `data/attachments/` — uploaded files, named `<id>__<original name>`.
-- `data/` is git-ignored — it's your personal task data, not part of the repo. Back it up by copying the folder; there's no external sync.
-- The dev server and the installed app share the same `data/` folder (the location is hardcoded to this checkout in `electron/store.cjs`), so running both at once can race on saves — stick to one at a time.
+- `~/Library/Application Support/tasktray/projects.csv`, `columns.csv`, `cards.csv`, `tags.csv`, `folders.csv` — one CSV per table, plain text, safe to open in a spreadsheet app or text editor.
+- `~/Library/Application Support/tasktray/attachments/` — uploaded files, named `<id>__<original name>`.
+- This folder isn't part of the repo — it's your personal task data, computed per-user from your home directory, not git-ignored repo state. Back it up by copying the folder; there's no external sync.
+- The dev server and any built/installed copy of the app share this same folder, so running both at once can race on saves — stick to one at a time.
+- If you're upgrading a checkout that predates this portable location, your existing board is migrated automatically the first time the app loads: the old `data/` folder inside the repo is copied (not moved) into the new location, then left in place as a backup.
 
 ## Architecture
 
