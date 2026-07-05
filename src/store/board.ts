@@ -9,6 +9,7 @@
 // own `columnId` field even while filed in a folder (see Card.columnId).
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
+import { arrayMove } from '@dnd-kit/sortable'
 import type {
   BoardItem,
   Card,
@@ -804,4 +805,26 @@ export function selectFolderTasks(state: Pick<BoardState, 'folders' | 'cards'>, 
 
 export function selectAllTags(state: Pick<BoardState, 'tags'>): Tag[] {
   return Object.values(state.tags)
+}
+
+// Reorders a folder's tasks within one status column while leaving every
+// other column's relative interleaving untouched — used when dragging within
+// a folder-scoped board view (FolderBoardShell), where a "column" is just a
+// filter over folder.taskIds rather than a real placement. `activeId`/`overId`
+// must both currently sit in `columnId` (per folder.taskIds + card.columnId).
+// Returns the new full taskIds array to pass to reorderFolderTasks, or null
+// if the reorder is a no-op / inputs are invalid.
+export function reorderFolderTaskIdsWithinColumn(
+  folder: Pick<Folder, 'taskIds'>,
+  cards: Record<string, Card>,
+  columnId: string,
+  activeId: string,
+  overId: string,
+): string[] | null {
+  const subset = folder.taskIds.filter((id) => cards[id]?.columnId === columnId)
+  const oldIndex = subset.indexOf(activeId)
+  const newIndex = subset.indexOf(overId)
+  if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return null
+  const queue = arrayMove(subset, oldIndex, newIndex)
+  return folder.taskIds.map((id) => (cards[id]?.columnId === columnId ? queue.shift()! : id))
 }

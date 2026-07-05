@@ -28,13 +28,16 @@ which never touches it — see TESTING.md), back it up first
 (`cp -r data /tmp/...`) since it's the user's real, irreplaceable task data,
 not fixtures.
 
-`electron/store.cjs`'s `DATA_DIR` honors a `TASKTRAY_DATA_DIR` env var
-override used only by its test file to redirect I/O to a disposable temp
-directory — never set this when actually running the app.
+`electron/store.cjs`'s `DATA_DIR`/`LEGACY_DATA_DIR` honor `TASKTRAY_DATA_DIR`/
+`TASKTRAY_LEGACY_DATA_DIR` env var overrides used only by its test file to
+redirect I/O to disposable temp directories — never set these when actually
+running the app.
 
 ## Architecture
 
-**Data flow:** `electron/store.cjs` (main process) reads/writes CSV files in `data/` (git-ignored, hardcoded absolute path `DATA_DIR` — this repo is tied to this one checkout, not a distributable path) → exposed over IPC (`board:load`, `board:save`, `attachment:*`) → bridged into the renderer as `window.boardFS` by `electron/preload.cjs` → wrapped as a Zustand `PersistStorage` in `src/store/persist.ts` → backs the single Zustand store in `src/store/board.ts`. Every store mutation triggers a full-state `saveState` write — there's no incremental/diffed persistence. `src/store/saveStatus.ts` is a small separate store tracking saving/saved/error for the UI indicator; it's deliberately not part of the persisted board state (see comment in that file for why).
+**Data flow:** `electron/store.cjs` (main process) reads/writes CSV files in `~/Library/Application Support/tasktray/` (`DATA_DIR` — portable, computed from `os.homedir()`, the same for the dev server and any built/installed copy of the app) → exposed over IPC (`board:load`, `board:save`, `attachment:*`) → bridged into the renderer as `window.boardFS` by `electron/preload.cjs` → wrapped as a Zustand `PersistStorage` in `src/store/persist.ts` → backs the single Zustand store in `src/store/board.ts`. Every store mutation triggers a full-state `saveState` write — there's no incremental/diffed persistence. `src/store/saveStatus.ts` is a small separate store tracking saving/saved/error for the UI indicator; it's deliberately not part of the persisted board state (see comment in that file for why).
+
+Checkouts from before `DATA_DIR` became portable had it hardcoded to one specific machine's home directory and project folder (`LEGACY_DATA_DIR` in `store.cjs`). `loadState()` calls `migrateFromLegacyLocation()` first: if the portable location has no data yet but that legacy path does, it copies (never moves — the legacy folder is left in place) the CSVs and attachments over, so upgrading this file on that one original machine doesn't strand its existing board.
 
 One CSV per table: `projects.csv`, `columns.csv`, `cards.csv`, `tags.csv`, `folders.csv`. List-of-id fields are `;`-joined (nanoid's alphabet never contains `;`); nested structures (links, checklist, attachment metadata) are JSON-encoded into a single CSV cell (`electron/csv.cjs` / `electron/store.cjs`). Attachments are separate files in `data/attachments/`, named `<id>__<original name>`. `electron/store.cjs` carries legacy-schema read fallbacks (old `columns.csv` had `projectId` instead of `ownerType`/`ownerId`; old `folders.csv` had per-folder sub-columns instead of a flat `taskIds` list) — `loadState()` migrates and immediately re-saves so the on-disk schema doesn't linger stale.
 
@@ -42,7 +45,7 @@ One CSV per table: `projects.csv`, `columns.csv`, `cards.csv`, `tags.csv`, `fold
 
 **Columns are fixed, not user-defined.** `FIXED_COLUMNS` in `src/store/board.ts` hardcodes exactly four phases: `To Do`, `In Progress`, `Done`, `NULLSPACE`. Every board owner (Home, each project) always has all four. `ensureFixedPhases` (run in `onRehydrateStorage`) backfills any missing fixed column and places any project not yet sitting in a Home column into Home's "To Do". `selectOwnerColumns` always returns columns in `FIXED_COLUMNS` order regardless of what's in a project's `columnOrder`; that array is only ever a membership list, never a render order.
 
-**Routing** (`src/App.tsx`): two routes — `/` (`Home.tsx`) and `/project/:projectId` (`Board.tsx`). Both are thin wrappers around `src/components/BoardShell.tsx`, which is the actual board/table UI shared by both (parameterized by `ownerType`/`ownerId`). Folders have no route of their own — they expand inline in place on whichever board they sit in (see `FolderCard.tsx`), not on a separate page.
+**Routing** (`src/App.tsx`): three routes — `/` (`Home.tsx`), `/project/:projectId` (`Board.tsx`), and `/folder/:folderId` (`FolderBoard.tsx`). `Home.tsx`/`Board.tsx` are thin wrappers around `src/components/BoardShell.tsx`, the shared board/table UI (parameterized by `ownerType`/`ownerId`). `FolderBoard.tsx` wraps `src/components/FolderBoardShell.tsx` instead — a sibling to `BoardShell.tsx`, scoped to one folder's `taskIds` rather than a real column-owning board, with its own `DndContext` (folders don't own columns, so it groups the folder's tasks by each card's `columnId` instead of a column's `cardOrder`). Folders can still also expand inline in place on whichever board they sit in (see `FolderCard.tsx`, which links to both — the inline expand and the "open folder board" button) — both remain valid ways to view a folder's tasks.
 
 **`BoardShell.tsx`** owns: the Kanban/Table view toggle, search/priority/tag filter state (`FilterBar.tsx`, a popover — not an always-visible row), the `@dnd-kit` `DndContext` and all drag handling, and mounts `GlobalAddButton.tsx` (a single fixed-position "+" that creates directly into the board's "To Do" column, replacing what used to be per-column add controls).
 

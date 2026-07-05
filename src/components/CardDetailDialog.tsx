@@ -119,9 +119,20 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
         <CardAttachmentsSection card={card} />
       </Field>
 
-      <div className="mt-7 border-t border-white/[0.06] pt-4">
+      <div className="mt-7 flex items-center justify-between border-t border-white/[0.06] pt-4">
         <button type="button" onClick={handleDelete} className="btn-danger-link">
           Delete card
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            commitTitle()
+            commitSummary()
+            onClose()
+          }}
+          className="btn-primary"
+        >
+          Save
         </button>
       </div>
     </Modal>

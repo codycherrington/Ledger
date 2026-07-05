@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useShallow } from 'zustand/react/shallow'
@@ -8,7 +9,7 @@ import { selectFolderTasks, useBoardStore } from '../store/board'
 import Modal from './Modal'
 import ItemTypeBadge from './ItemTypeBadge'
 import Card from './Card'
-import { ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
+import { BoardGlyph, ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
 import type { Folder } from '../types'
 
 interface FolderCardProps {
@@ -17,6 +18,7 @@ interface FolderCardProps {
 }
 
 export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
+  const navigate = useNavigate()
   const { attributes, listeners, setNodeRef, style } = useSortableItem(folder.id, { columnId: folder.columnId })
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
@@ -50,6 +52,17 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
             className="icon-btn float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
           >
             <InfoIcon className="h-3.5 w-3.5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Open folder board"
+            onClick={(e) => {
+              e.stopPropagation()
+              navigate(`/folder/${folder.id}`)
+            }}
+            className="icon-btn float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
+          >
+            <BoardGlyph className="h-3.5 w-3.5" />
           </button>
           <ItemTypeBadge kind="folder" />
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">

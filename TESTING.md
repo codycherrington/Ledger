@@ -60,24 +60,28 @@ following the same layout.
 
 ## How real user data is kept out of harm's way
 
-`electron/store.cjs` hardcodes `DATA_DIR` to this checkout's `data/` folder —
-the user's real, irreplaceable task data (see `CLAUDE.md`). Tests for that
-module must never touch it. Rather than mock `node:fs` (which turned out to
-be unreliable — Vite's CJS interop let `require('node:fs')` calls resolve to
-the real module regardless of `vi.mock`), `store.cjs` honors a
-`TASKTRAY_DATA_DIR` environment variable override:
+`electron/store.cjs` resolves `DATA_DIR` to `~/Library/Application
+Support/tasktray` — the user's real, irreplaceable task data (see
+`CLAUDE.md`) — and also reads from `LEGACY_DATA_DIR` (a hardcoded path from
+before this location became portable) to migrate old checkouts. Tests for
+this module must never touch either real location. Rather than mock
+`node:fs` (which turned out to be unreliable — Vite's CJS interop let
+`require('node:fs')` calls resolve to the real module regardless of
+`vi.mock`), `store.cjs` honors two environment variable overrides:
 
 ```js
-const DATA_DIR = process.env.TASKTRAY_DATA_DIR || path.join('/…/tasktray', 'data')
+const DATA_DIR = process.env.TASKTRAY_DATA_DIR || DEFAULT_DATA_DIR
+const LEGACY_DATA_DIR = process.env.TASKTRAY_LEGACY_DATA_DIR || '/…/tasktray/data'
 ```
 
-This variable is never set outside `tests/electron/store.test.ts`, which
-points it at a disposable `mkdtemp` directory and asserts (in a `beforeAll`
-guard) that `DATA_DIR` actually resolves under `os.tmpdir()` before running
+Neither variable is ever set outside `tests/electron/store.test.ts`, which
+points both at disposable `mkdtemp` directories and asserts (in a `beforeAll`
+guard) that both actually resolve under `os.tmpdir()` before running
 anything — if that guard ever fails, every test in the file refuses to run
-rather than risk writing to the real folder. This means `store.cjs` tests
-exercise the real filesystem (real atomic writes, real `readdirSync`, etc.)
-rather than a hand-rolled fake, while still being fully isolated.
+rather than risk writing to or reading from a real folder. This means
+`store.cjs` tests exercise the real filesystem (real atomic writes, real
+`readdirSync`, real `cpSync` for the migration path) rather than a
+hand-rolled fake, while still being fully isolated.
 
 `src/store/persist.ts` and `src/store/board.ts` are safe to test directly
 without this concern: they only ever touch `window.boardFS`, which

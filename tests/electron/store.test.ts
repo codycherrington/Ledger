@@ -1,28 +1,33 @@
-// electron/store.cjs hardcodes DATA_DIR to this checkout's real data/
-// folder, which holds the user's actual, irreplaceable task data (see
-// CLAUDE.md). To make this module safely testable, it honors a
-// TASKTRAY_DATA_DIR env var override (test-only — never set in production)
-// so these tests run against a disposable temp directory on the real
-// filesystem instead of mocking fs, and instead of ever touching the real
-// data/ folder.
+// electron/store.cjs's real default DATA_DIR is a per-user location under
+// the current machine's home directory, and LEGACY_DATA_DIR points at one
+// specific machine's real, irreplaceable task data (see CLAUDE.md). To make
+// this module safely testable, both are overridable via env vars (test-only
+// — never set in production) so these tests run against disposable temp
+// directories on the real filesystem instead of mocking fs, and instead of
+// ever touching a real location.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasktray-store-test-'))
+const tmpLegacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasktray-legacy-test-'))
 process.env.TASKTRAY_DATA_DIR = tmpDataDir
+process.env.TASKTRAY_LEGACY_DATA_DIR = tmpLegacyDir
 
 const { DATA_DIR, saveState, loadState, putAttachment, getAttachment, deleteAttachment } = await import(
   '../../electron/store.cjs'
 )
 
-// Guardrail: if this ever points anywhere near the real checkout's data/
+// Guardrail: if either of these ever points anywhere near a real data
 // folder, every test in this file must refuse to run rather than risk
 // touching real user data.
 beforeAll(() => {
   if (!DATA_DIR.startsWith(os.tmpdir())) {
     throw new Error(`Refusing to run: DATA_DIR (${DATA_DIR}) is not a temp directory.`)
+  }
+  if (!tmpLegacyDir.startsWith(os.tmpdir())) {
+    throw new Error(`Refusing to run: legacy dir override (${tmpLegacyDir}) is not a temp directory.`)
   }
 })
 
@@ -31,16 +36,27 @@ function resetDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 }
 
+function resetLegacyDir() {
+  fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
+  fs.mkdirSync(tmpLegacyDir, { recursive: true })
+}
+
 function writeCsv(file: string, contents: string) {
   fs.writeFileSync(path.join(DATA_DIR, file), contents, 'utf8')
 }
 
+function writeLegacyCsv(file: string, contents: string) {
+  fs.writeFileSync(path.join(tmpLegacyDir, file), contents, 'utf8')
+}
+
 beforeEach(() => {
   resetDataDir()
+  resetLegacyDir()
 })
 
 afterAll(() => {
   fs.rmSync(tmpDataDir, { recursive: true, force: true })
+  fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -185,6 +201,59 @@ describe('loadState', () => {
     // Migration is persisted immediately so the on-disk schema doesn't linger stale.
     const reloaded = loadState()!
     expect(reloaded.folders.f1.taskIds).toEqual(['card1'])
+  })
+})
+
+describe('migrateFromLegacyLocation (checkouts still on the old hardcoded path)', () => {
+  it('copies CSVs and attachments from the legacy dir when the portable dir is empty', () => {
+    writeLegacyCsv('tags.csv', 'id,name,color\r\nt1,urgent,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeLegacyCsv(file, '')
+    }
+    fs.mkdirSync(path.join(tmpLegacyDir, 'attachments'), { recursive: true })
+    fs.writeFileSync(path.join(tmpLegacyDir, 'attachments', 'att1__notes.txt'), 'hello')
+
+    const loaded = loadState()!
+
+    expect(Object.keys(loaded.tags)).toEqual(['t1'])
+    expect(fs.readFileSync(path.join(DATA_DIR, 'attachments', 'att1__notes.txt'), 'utf8')).toBe('hello')
+  })
+
+  it('copies, never moves — the legacy dir is left untouched after migrating', () => {
+    writeLegacyCsv('tags.csv', 'id,name,color\r\nt1,urgent,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeLegacyCsv(file, '')
+    }
+
+    loadState()
+
+    expect(fs.existsSync(path.join(tmpLegacyDir, 'tags.csv'))).toBe(true)
+    expect(fs.readFileSync(path.join(tmpLegacyDir, 'tags.csv'), 'utf8')).toContain('urgent')
+  })
+
+  it('does not touch the portable dir if it already has data, even if the legacy dir also has data', () => {
+    writeCsv('tags.csv', 'id,name,color\r\nnew1,keep-me,blue\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    writeLegacyCsv('tags.csv', 'id,name,color\r\nold1,should-not-appear,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeLegacyCsv(file, '')
+    }
+
+    const loaded = loadState()!
+
+    expect(Object.keys(loaded.tags)).toEqual(['new1'])
+  })
+
+  it('does nothing when the legacy dir does not exist', () => {
+    fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
+    expect(loadState()).toBeNull()
+    expect(fs.existsSync(tmpLegacyDir)).toBe(false)
+  })
+
+  it('does nothing when the legacy dir exists but has no data files either', () => {
+    expect(loadState()).toBeNull()
   })
 })
 
