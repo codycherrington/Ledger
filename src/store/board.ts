@@ -762,7 +762,7 @@ export const useBoardStore = create<BoardState>()(
 
     }),
     {
-      name: 'tasktray-store',
+      name: 'ledger-store',
       storage: boardStorage(),
       partialize: (state) => ({
         projects: state.projects,

@@ -21,7 +21,7 @@ declare global {
 export function requireFS(): BoardFS {
   if (!window.boardFS) {
     throw new Error(
-      'TaskTray stores data in CSV files through its Electron shell. Run "npm run dev" (or the installed app) instead of opening this page in a browser.',
+      'Ledger stores data in CSV files through its Electron shell. Run "npm run dev" (or the installed app) instead of opening this page in a browser.',
     )
   }
   return window.boardFS

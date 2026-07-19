@@ -6,28 +6,34 @@ const path = require('node:path')
 const { encodeCsv, parseCsv } = require('./csv.cjs')
 
 // Portable per-user location, same for the dev server and any built/installed
-// copy of the app: ~/Library/Application Support/tasktray (this app's only
+// copy of the app: ~/Library/Application Support/ledger (this app's only
 // supported platform is macOS). Deliberately not derived from Electron's
 // app.getPath('userData') — that resolves differently for `npm run dev`
-// (app name "tasktray", from package.json's `name`) vs. an electron-builder
-// package (app name "TaskTray", from `build.productName`), which would break
+// (app name "ledger", from package.json's `name`) vs. an electron-builder
+// package (app name "Ledger", from `build.productName`), which would break
 // the dev server and the installed app sharing one data folder. Computing it
 // by hand with plain `os.homedir()` also means this module needs no Electron
 // runtime, which is what lets it be required directly under plain Node in
-// the test suite. TASKTRAY_DATA_DIR overrides this — set only by
+// the test suite. LEDGER_DATA_DIR overrides this — set only by
 // tests/electron/store.test.ts, to point at a disposable temp dir instead of
 // a real location; never set when actually running the app.
-const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'tasktray')
-const DATA_DIR = process.env.TASKTRAY_DATA_DIR || DEFAULT_DATA_DIR
+const DEFAULT_DATA_DIR = path.join(os.homedir(), 'Library', 'Application Support', 'ledger')
+const DATA_DIR = process.env.LEDGER_DATA_DIR || DEFAULT_DATA_DIR
 const ATTACHMENTS_DIR = path.join(DATA_DIR, 'attachments')
 
-// Checkouts before this file became portable hardcoded DATA_DIR to one
-// specific machine's home directory and project folder. TASKTRAY_LEGACY_DATA_DIR
-// overrides this for testing only; in real usage it's always this fixed
-// path, so migrateFromLegacyLocation() below only ever reads from the one
-// real legacy location that could actually exist on this machine.
+// Legacy locations to migrate from if DATA_DIR is empty, checked in priority
+// order (most likely to hold real data first):
+// 1. The portable location under this app's previous name, TaskTray — where
+//    real data actually lives for any checkout that predates the rename to
+//    Ledger. LEDGER_PREVIOUS_APP_DATA_DIR overrides this for testing only.
+// 2. The original machine-specific hardcoded dev path from before DATA_DIR
+//    became portable at all. LEDGER_LEGACY_DATA_DIR overrides this for
+//    testing only; in real usage it's always this fixed path.
+const PREVIOUS_APP_DATA_DIR =
+  process.env.LEDGER_PREVIOUS_APP_DATA_DIR || path.join(os.homedir(), 'Library', 'Application Support', 'tasktray')
 const LEGACY_DATA_DIR =
-  process.env.TASKTRAY_LEGACY_DATA_DIR || '/Users/codycherrington/Documents/Development/Projects/tasktray/data'
+  process.env.LEDGER_LEGACY_DATA_DIR || '/Users/codycherrington/Documents/Development/Projects/tasktray/data'
+const LEGACY_DATA_DIRS = [PREVIOUS_APP_DATA_DIR, LEGACY_DATA_DIR]
 
 function ensureDirs() {
   fs.mkdirSync(ATTACHMENTS_DIR, { recursive: true })
@@ -277,16 +283,19 @@ function hasAnyDataFile(dir) {
   return Object.values(TABLES).some((table) => fs.existsSync(path.join(dir, table.file)))
 }
 
-// One-time migration for anyone whose data still sits at the old hardcoded
-// path: if the portable location has no data yet but the legacy one does,
-// copy (never move — the legacy folder is left in place as a backup) its
-// CSVs and attachments over.
+// One-time migration for anyone whose data still sits at an old location: if
+// the portable location has no data yet, check each legacy dir in priority
+// order and copy (never move — the legacy folder is left in place as a
+// backup) the CSVs and attachments from the first one that has data.
 function migrateFromLegacyLocation() {
   if (hasAnyDataFile(DATA_DIR)) return
-  if (!fs.existsSync(LEGACY_DATA_DIR) || !hasAnyDataFile(LEGACY_DATA_DIR)) return
-  fs.mkdirSync(DATA_DIR, { recursive: true })
-  for (const entry of fs.readdirSync(LEGACY_DATA_DIR)) {
-    fs.cpSync(path.join(LEGACY_DATA_DIR, entry), path.join(DATA_DIR, entry), { recursive: true })
+  for (const dir of LEGACY_DATA_DIRS) {
+    if (!fs.existsSync(dir) || !hasAnyDataFile(dir)) continue
+    fs.mkdirSync(DATA_DIR, { recursive: true })
+    for (const entry of fs.readdirSync(dir)) {
+      fs.cpSync(path.join(dir, entry), path.join(DATA_DIR, entry), { recursive: true })
+    }
+    return
   }
 }
 
