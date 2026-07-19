@@ -405,6 +405,12 @@ function shellQuoteSingle(value) {
   return `'${String(value).replace(/'/g, `'\\''`)}'`
 }
 
+// Fed to a one-off, non-interactive `claude -p` call (see below) to turn the
+// repo's last session into a short recap instead of carrying its full
+// transcript forward.
+const RECAP_PROMPT =
+  'In 3-5 sentences, recap the current state and recent progress of this project for someone about to start a new task who has not seen this conversation. Focus on what has been done and any context they need, not implementation minutiae.'
+
 // Launches Claude Code in a real Terminal.app window rather than spawning it
 // directly from this (Electron) process: apps launched via Finder/
 // LaunchServices don't inherit the user's shell PATH, so a direct spawn of
@@ -412,12 +418,23 @@ function shellQuoteSingle(value) {
 // works fine when the user runs it by hand. Terminal.app sources the user's
 // normal shell profile, so PATH resolution matches the command line exactly.
 //
-// The task prompt is never interpolated into the script's source text — it's
-// written to its own temp file and read back via `"$(cat '<file>')"` at
-// script run time. Double-quoting that command substitution suppresses word
-// splitting and globbing, so arbitrary prompt content (quotes, backticks,
-// "$", newlines) passes through inert instead of being re-parsed as shell
-// syntax.
+// Every launch starts a brand-new session rather than `--continue`-ing the
+// repo's last one. `--continue` always resumes whatever conversation ran
+// last in that repo regardless of whether it has anything to do with the
+// task being launched now, so across a handful of unrelated tasks it just
+// accumulates stale, irrelevant history. Instead, if a prior session exists,
+// a quick non-interactive call (`claude -p ... --continue`) asks that last
+// session for a short recap and folds it into the fresh prompt — the new
+// session starts caught up on context without dragging the old transcript
+// along. If the recap call produces nothing (no prior session, or the call
+// fails for any reason), the plain task prompt is used as-is.
+//
+// The task prompt (and the recap, once captured into $RECAP) is never
+// interpolated into the script's source text — the prompt is written to its
+// own temp file and read back via `"$(cat '<file>')"`, and $RECAP is only
+// ever used as a double-quoted variable expansion. Both forms pass arbitrary
+// content (quotes, backticks, "$", newlines) through inert instead of having
+// it re-parsed as shell syntax.
 //
 // LEDGER_DISABLE_CLAUDE_LAUNCH skips the actual `open -a Terminal` spawn —
 // set only by the test file, so tests can inspect the generated script/prompt
@@ -430,13 +447,25 @@ function launchClaudeCode(repoPath, prompt) {
 
   fs.writeFileSync(promptFile, prompt ?? '')
 
-  const resumeFlag = hasExistingSession(repoPath) ? '--continue ' : ''
-  const script = [
-    '#!/bin/zsh',
-    `cd ${shellQuoteSingle(repoPath)}`,
-    `claude ${resumeFlag}"$(cat ${shellQuoteSingle(promptFile)})"`,
-    '',
-  ].join('\n')
+  const readPrompt = `"$(cat ${shellQuoteSingle(promptFile)})"`
+  const scriptLines = ['#!/bin/zsh', `cd ${shellQuoteSingle(repoPath)}`]
+
+  if (hasExistingSession(repoPath)) {
+    scriptLines.push(
+      `echo 'Reviewing recent progress in this project...'`,
+      `RECAP="$(claude -p ${shellQuoteSingle(RECAP_PROMPT)} --continue 2>/dev/null)"`,
+      `if [ -n "$RECAP" ]; then`,
+      `  claude "$(cat ${shellQuoteSingle(promptFile)})\n\n---\n\nRecap of recent work in this project:\n$RECAP"`,
+      `else`,
+      `  claude ${readPrompt}`,
+      `fi`,
+    )
+  } else {
+    scriptLines.push(`claude ${readPrompt}`)
+  }
+
+  scriptLines.push('')
+  const script = scriptLines.join('\n')
   fs.writeFileSync(scriptFile, script)
   fs.chmodSync(scriptFile, 0o755)
 

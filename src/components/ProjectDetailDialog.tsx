@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import Modal from './Modal'
 import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
+import CopyButton from './CopyButton'
 import { useBoardStore } from '../store/board'
 
 interface ProjectDetailDialogProps {
@@ -57,7 +58,7 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
         className="-mt-8 mb-5 w-full rounded-lg border border-transparent px-1.5 py-1 text-lg font-semibold text-slate-100 transition hover:border-white/10 focus:border-indigo-400/50 focus:outline-none"
       />
 
-      <Field label="Description">
+      <Field label="Description" action={description.trim() && <CopyButton text={description} label="Copy description" />}>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -136,10 +137,23 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
   )
 }
 
-function Field({ label, className = '', children }: { label: string; className?: string; children: ReactNode }) {
+function Field({
+  label,
+  className = '',
+  action,
+  children,
+}: {
+  label: string
+  className?: string
+  action?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className={className}>
-      <p className="mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">{label}</p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">{label}</p>
+        {action}
+      </div>
       {children}
     </div>
   )
