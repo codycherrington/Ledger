@@ -46,3 +46,14 @@ export const COLOR_CLASSES: Record<ColorName, ColorClasses> = {
 export function nextColor(usedCount: number): ColorName {
   return COLOR_NAMES[usedCount % COLOR_NAMES.length]
 }
+
+// Semantic (not decorative) color mappings, shared wherever priority/status
+// need the same red/amber/green/slate meaning — table view, the task detail
+// dialog's status picker, and the status pill shown on folder-filed tasks.
+export const PRIORITY_COLOR: Record<'low' | 'med' | 'high', ColorName> = { high: 'red', med: 'amber', low: 'emerald' }
+export const STATUS_COLOR: Record<string, ColorName> = {
+  'To Do': 'red',
+  'In Progress': 'amber',
+  Done: 'emerald',
+  Stash: 'slate',
+}

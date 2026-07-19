@@ -1,6 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import type { ReactNode } from 'react'
-import { MoreIcon } from './icons'
 
 interface MenuItem {
   label: string
@@ -10,24 +9,13 @@ interface MenuItem {
 
 interface MenuProps {
   items: MenuItem[]
-  trigger?: ReactNode
+  trigger: ReactNode
 }
 
 export default function Menu({ items, trigger }: MenuProps) {
   return (
     <DropdownMenu.Root>
-      <DropdownMenu.Trigger asChild>
-        {trigger ?? (
-          <button
-            type="button"
-            aria-label="More options"
-            className="icon-btn"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <MoreIcon />
-          </button>
-        )}
-      </DropdownMenu.Trigger>
+      <DropdownMenu.Trigger asChild>{trigger}</DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content
           align="end"
