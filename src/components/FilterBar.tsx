@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import { useShallow } from 'zustand/react/shallow'
 import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
@@ -18,6 +19,10 @@ interface FilterBarProps {
   onStatusColumnIdsChange: (ids: string[]) => void
   dateFilters: DateFilter[]
   onDateFiltersChange: (filters: DateFilter[]) => void
+  // Extra control rendered at the right edge of this same row (e.g. the
+  // "Open Claude Code" button on a project/folder board) — pushed there via
+  // ml-auto rather than owned by FilterBar itself.
+  action?: ReactNode
 }
 
 const PRIORITIES: Priority[] = ['low', 'med', 'high']
@@ -35,6 +40,7 @@ export default function FilterBar({
   onStatusColumnIdsChange,
   dateFilters,
   onDateFiltersChange,
+  action,
 }: FilterBarProps) {
   const tags = useBoardStore(useShallow(selectAllTags))
 
@@ -176,6 +182,8 @@ export default function FilterBar({
           </Popover.Content>
         </Popover.Portal>
       </Popover.Root>
+
+      {action && <div className="ml-auto">{action}</div>}
     </div>
   )
 }

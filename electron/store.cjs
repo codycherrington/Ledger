@@ -475,6 +475,23 @@ function launchClaudeCode(repoPath, prompt) {
   return { scriptFile, promptFile }
 }
 
+// Plain "open this repo in Claude Code" — cds into repoPath and runs `claude`
+// interactively with no prompt, no recap, no session-continuation logic.
+// Unlike launchClaudeCode, this isn't feeding it a task; it's just getting a
+// terminal open in the right place for the user to drive by hand.
+function openClaudeCodeTerminal(repoPath) {
+  const id = crypto.randomUUID()
+  const scriptFile = path.join(os.tmpdir(), `ledger-claude-open-${id}.command`)
+  const script = ['#!/bin/zsh', `cd ${shellQuoteSingle(repoPath)}`, 'claude', ''].join('\n')
+  fs.writeFileSync(scriptFile, script)
+  fs.chmodSync(scriptFile, 0o755)
+
+  if (process.env.LEDGER_DISABLE_CLAUDE_LAUNCH) return { scriptFile }
+
+  spawn('open', ['-a', 'Terminal', scriptFile], { detached: true, stdio: 'ignore' }).unref()
+  return { scriptFile }
+}
+
 module.exports = {
   DATA_DIR,
   ensureDirs,
@@ -485,4 +502,5 @@ module.exports = {
   deleteAttachment,
   hasExistingSession,
   launchClaudeCode,
+  openClaudeCodeTerminal,
 }

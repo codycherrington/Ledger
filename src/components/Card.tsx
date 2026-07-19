@@ -4,6 +4,7 @@ import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { useSortableItem } from '../lib/useSortableItem'
 import { selectAllTags, useBoardStore } from '../store/board'
+import CopyButton from './CopyButton'
 import { AttachmentIcon, InfoIcon, LinkIcon } from './icons'
 
 const PRIORITY_CLASSES: Record<NonNullable<CardType['priority']>, string> = {
@@ -123,6 +124,14 @@ export default function Card({ card, onOpen }: CardProps) {
       >
         <InfoIcon className="h-3.5 w-3.5" />
       </button>
+      {card.summary?.trim() && (
+        <span
+          onClick={(e) => e.stopPropagation()}
+          className="float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
+        >
+          <CopyButton text={card.summary} label="Copy summary" />
+        </span>
+      )}
       <CardBody card={card} />
     </div>
   )

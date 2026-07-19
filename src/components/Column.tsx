@@ -13,19 +13,26 @@ interface ColumnProps {
   items: BoardItem[]
   onOpenCard: (cardId: string) => void
   // Arbitrary control rendered top-right of the column header, next to the
-  // count badge — e.g. the add-item button on "To Do" or the Claude Code
-  // launch-all button on "In Progress". Callers decide which column (if any)
-  // gets one; Column itself stays agnostic to what the action does.
+  // count badge — e.g. the add-item button on "To Do", the Claude Code
+  // launch-all button on "In Progress", or the collapse toggle on "Done".
+  // Callers decide which column (if any) gets one; Column itself stays
+  // agnostic to what the action does.
   headerAction?: ReactNode
+  // When true, hides the card list so the column takes up less vertical
+  // space (width stays fixed) while still showing its header (name + count).
+  // The droppable ref stays on the outer container (not the hidden list) so
+  // drag-and-drop into a collapsed column keeps working.
+  collapsed?: boolean
 }
 
-export default function Column({ column, items, onOpenCard, headerAction }: ColumnProps) {
+export default function Column({ column, items, onOpenCard, headerAction, collapsed = false }: ColumnProps) {
   const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' } })
   const isStash = column.name === 'Stash'
   const colorClasses = COLOR_CLASSES[column.color as keyof typeof COLOR_CLASSES] ?? COLOR_CLASSES.slate
 
   return (
     <div
+      ref={setDroppableRef}
       className={
         isStash
           ? 'flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-dashed border-white/15 bg-white/[0.015]'
@@ -45,20 +52,22 @@ export default function Column({ column, items, onOpenCard, headerAction }: Colu
         {headerAction}
       </div>
 
-      <div ref={setDroppableRef} className="min-h-2 flex-1 space-y-2 overflow-y-auto px-2.5 pb-2.5">
-        <SortableContext items={items.map(boardItemId)} strategy={verticalListSortingStrategy}>
-          {items.map((item) => {
-            switch (item.kind) {
-              case 'task':
-                return <Card key={item.card.id} card={item.card} onOpen={onOpenCard} />
-              case 'project':
-                return <ProjectCard key={item.project.id} project={item.project} />
-              case 'folder':
-                return <FolderCard key={item.folder.id} folder={item.folder} onOpenCard={onOpenCard} />
-            }
-          })}
-        </SortableContext>
-      </div>
+      {!collapsed && (
+        <div className="min-h-2 flex-1 space-y-2 overflow-y-auto px-2.5 pb-2.5">
+          <SortableContext items={items.map(boardItemId)} strategy={verticalListSortingStrategy}>
+            {items.map((item) => {
+              switch (item.kind) {
+                case 'task':
+                  return <Card key={item.card.id} card={item.card} onOpen={onOpenCard} />
+                case 'project':
+                  return <ProjectCard key={item.project.id} project={item.project} />
+                case 'folder':
+                  return <FolderCard key={item.folder.id} folder={item.folder} onOpenCard={onOpenCard} />
+              }
+            })}
+          </SortableContext>
+        </div>
+      )}
     </div>
   )
 }

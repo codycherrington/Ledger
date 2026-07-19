@@ -35,6 +35,7 @@ const {
   deleteAttachment,
   hasExistingSession,
   launchClaudeCode,
+  openClaudeCodeTerminal,
 } = await import('../../electron/store.cjs')
 
 // Guardrail: if any of these ever points anywhere near a real data folder,
@@ -103,7 +104,7 @@ afterAll(() => {
   // os.tmpdir() (that part isn't overridable, unlike DATA_DIR) — sweep up
   // this run's leftovers so the suite doesn't litter the system temp dir.
   for (const f of fs.readdirSync(os.tmpdir())) {
-    if (f.startsWith('ledger-claude-launch-') || f.startsWith('ledger-claude-prompt-')) {
+    if (f.startsWith('ledger-claude-launch-') || f.startsWith('ledger-claude-prompt-') || f.startsWith('ledger-claude-open-')) {
       fs.rmSync(path.join(os.tmpdir(), f), { force: true })
     }
   }
@@ -522,6 +523,30 @@ describe('launchClaudeCode', () => {
 
   it('single-quotes a repo path that itself contains a single quote', () => {
     const script = scriptContent("/some/repo's folder", 'x')
+    expect(script).toContain(`cd '/some/repo'\\''s folder'`)
+  })
+})
+
+describe('openClaudeCodeTerminal', () => {
+  it('writes an executable .command script with no prompt file', () => {
+    const { scriptFile } = openClaudeCodeTerminal('/some/repo')
+    expect(fs.existsSync(scriptFile)).toBe(true)
+    expect(fs.statSync(scriptFile).mode & 0o111).not.toBe(0)
+  })
+
+  it('cds into the repo path and runs claude with no prompt, recap, or --continue', () => {
+    const { scriptFile } = openClaudeCodeTerminal('/some/repo')
+    const script = fs.readFileSync(scriptFile, 'utf8')
+    expect(script).toContain("cd '/some/repo'")
+    expect(script).toMatch(/\bclaude\s*$/m)
+    expect(script).not.toContain('RECAP')
+    expect(script).not.toMatch(/claude --continue/)
+    expect(script).not.toMatch(/claude -p/)
+  })
+
+  it('single-quotes a repo path that itself contains a single quote', () => {
+    const { scriptFile } = openClaudeCodeTerminal("/some/repo's folder")
+    const script = fs.readFileSync(scriptFile, 'utf8')
     expect(script).toContain(`cd '/some/repo'\\''s folder'`)
   })
 })

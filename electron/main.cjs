@@ -72,6 +72,7 @@ ipcMain.handle('dialog:pickFolder', async () => {
   return result.canceled ? null : result.filePaths[0]
 })
 ipcMain.handle('claudeCode:launch', (_event, repoPath, prompt) => store.launchClaudeCode(repoPath, prompt))
+ipcMain.handle('claudeCode:open', (_event, repoPath) => store.openClaudeCodeTerminal(repoPath))
 
 app.whenReady().then(() => {
   buildMenu()
