@@ -10,4 +10,5 @@ contextBridge.exposeInMainWorld('boardFS', {
   deleteAttachment: (id) => ipcRenderer.invoke('attachment:delete', id),
   pickFolder: () => ipcRenderer.invoke('dialog:pickFolder'),
   launchClaudeCode: (repoPath, prompt) => ipcRenderer.invoke('claudeCode:launch', repoPath, prompt),
+  openClaudeCodeTerminal: (repoPath) => ipcRenderer.invoke('claudeCode:open', repoPath),
 })

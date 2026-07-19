@@ -12,6 +12,7 @@ export interface BoardFS {
   deleteAttachment: (id: string) => Promise<void>
   pickFolder: () => Promise<string | null>
   launchClaudeCode: (repoPath: string, prompt: string) => Promise<void>
+  openClaudeCodeTerminal: (repoPath: string) => Promise<void>
 }
 
 declare global {

@@ -110,6 +110,15 @@ export function CheckIcon({ className = 'h-3.5 w-3.5' }: IconProps) {
   )
 }
 
+export function TerminalIcon({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="3" y="4" width="18" height="16" rx="2" />
+      <path d="m7 9 3 3-3 3M13 15h4" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function LinkIcon({ className = 'h-3 w-3' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
