@@ -144,14 +144,14 @@ export default function TableView({
         <thead>
           <tr>
             {selectable && <th className="w-8 border-b border-white/[0.06] px-3 py-2" aria-hidden="true" />}
-            <Th label="Title" active={sortKey === 'title'} dir={sortDir} onClick={() => toggleSort('title')} />
             {showTypeColumn && (
               <th className="border-b border-white/[0.06] px-3 py-2 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
                 Type
               </th>
             )}
+            <Th label="Title" active={sortKey === 'title'} dir={sortDir} onClick={() => toggleSort('title')} />
             <th className="border-b border-white/[0.06] px-3 py-2 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
-              Category
+              Tags
             </th>
             <Th label="Priority" active={sortKey === 'priority'} dir={sortDir} onClick={() => toggleSort('priority')} />
             <Th label="Due date" active={sortKey === 'dueDate'} dir={sortDir} onClick={() => toggleSort('dueDate')} />
@@ -190,6 +190,11 @@ export default function TableView({
                     )}
                   </td>
                 )}
+                {showTypeColumn && (
+                  <td className="border-b border-white/[0.04] px-3 py-2.5 text-xs font-medium text-slate-400 group-hover:bg-white/[0.02]">
+                    {TYPE_LABEL[item.kind]}
+                  </td>
+                )}
                 <td
                   onClick={item.kind === 'task' || item.kind === 'project' ? () => openItem(item) : undefined}
                   className={`border-b border-white/[0.04] px-3 py-2.5 text-slate-100 group-hover:bg-white/[0.02] ${
@@ -223,11 +228,6 @@ export default function TableView({
                     boardItemTitle(item)
                   )}
                 </td>
-                {showTypeColumn && (
-                  <td className="border-b border-white/[0.04] px-3 py-2.5 text-xs font-medium text-slate-400 group-hover:bg-white/[0.02]">
-                    {TYPE_LABEL[item.kind]}
-                  </td>
-                )}
                 <td className="border-b border-white/[0.04] px-3 py-2.5 group-hover:bg-white/[0.02]">
                   <div className="flex flex-wrap gap-1">
                     {tagIds.map((tagId) => {

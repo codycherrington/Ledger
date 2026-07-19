@@ -1,17 +1,23 @@
 import * as Popover from '@radix-ui/react-popover'
 import { useShallow } from 'zustand/react/shallow'
-import { COLOR_CLASSES } from '../lib/colors'
+import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
+import { DATE_FILTERS, DATE_FILTER_LABEL, type DateFilter } from '../lib/filters'
 import { selectAllTags, useBoardStore } from '../store/board'
 import { FilterIcon } from './icons'
-import type { Priority } from '../types'
+import type { Column, Priority } from '../types'
 
 interface FilterBarProps {
   search: string
   onSearchChange: (v: string) => void
-  priority: Priority | null
-  onPriorityChange: (p: Priority | null) => void
+  priority: Priority[]
+  onPriorityChange: (p: Priority[]) => void
   tagIds: string[]
   onTagIdsChange: (ids: string[]) => void
+  columns: Column[]
+  statusColumnIds: string[]
+  onStatusColumnIdsChange: (ids: string[]) => void
+  dateFilters: DateFilter[]
+  onDateFiltersChange: (filters: DateFilter[]) => void
 }
 
 const PRIORITIES: Priority[] = ['low', 'med', 'high']
@@ -24,14 +30,19 @@ export default function FilterBar({
   onPriorityChange,
   tagIds,
   onTagIdsChange,
+  columns,
+  statusColumnIds,
+  onStatusColumnIdsChange,
+  dateFilters,
+  onDateFiltersChange,
 }: FilterBarProps) {
   const tags = useBoardStore(useShallow(selectAllTags))
 
-  function toggleTag(id: string) {
-    onTagIdsChange(tagIds.includes(id) ? tagIds.filter((t) => t !== id) : [...tagIds, id])
+  function toggle<T>(value: T, list: T[], onChange: (next: T[]) => void) {
+    onChange(list.includes(value) ? list.filter((v) => v !== value) : [...list, value])
   }
 
-  const activeCount = (priority ? 1 : 0) + tagIds.length
+  const activeCount = priority.length + tagIds.length + statusColumnIds.length + dateFilters.length
   const hasFilters = activeCount > 0
 
   return (
@@ -66,20 +77,58 @@ export default function FilterBar({
             sideOffset={6}
             className="animate-pop-in bg-overlay z-50 w-72 rounded-xl border border-white/10 p-3.5 shadow-xl shadow-black/40"
           >
-            <p className="mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">Priority</p>
+            <p className="mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">Status</p>
+            <div className="flex flex-wrap gap-1">
+              {columns.map((col) => {
+                const active = statusColumnIds.includes(col.id)
+                const cls = COLOR_CLASSES[STATUS_COLOR[col.name] ?? 'slate']
+                return (
+                  <button
+                    key={col.id}
+                    type="button"
+                    onClick={() => toggle(col.id, statusColumnIds, onStatusColumnIdsChange)}
+                    className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                      active ? `${cls.bgSoft} ${cls.text} ${cls.border}` : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                    }`}
+                  >
+                    {col.name}
+                  </button>
+                )
+              })}
+            </div>
+
+            <p className="mt-3.5 mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">Priority</p>
             <div className="flex gap-1">
               {PRIORITIES.map((p) => (
                 <button
                   key={p}
                   type="button"
-                  onClick={() => onPriorityChange(priority === p ? null : p)}
+                  onClick={() => toggle(p, priority, onPriorityChange)}
                   className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
-                    priority === p
+                    priority.includes(p)
                       ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
                       : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
                   }`}
                 >
                   {PRIORITY_LABEL[p]}
+                </button>
+              ))}
+            </div>
+
+            <p className="mt-3.5 mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">Due date</p>
+            <div className="flex flex-wrap gap-1">
+              {DATE_FILTERS.map((f) => (
+                <button
+                  key={f}
+                  type="button"
+                  onClick={() => toggle(f, dateFilters, onDateFiltersChange)}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                    dateFilters.includes(f)
+                      ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
+                      : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                  }`}
+                >
+                  {DATE_FILTER_LABEL[f]}
                 </button>
               ))}
             </div>
@@ -95,7 +144,7 @@ export default function FilterBar({
                       <button
                         key={tag.id}
                         type="button"
-                        onClick={() => toggleTag(tag.id)}
+                        onClick={() => toggle(tag.id, tagIds, onTagIdsChange)}
                         className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${
                           active
                             ? `${cls.bgSoft} ${cls.text} ${cls.border}`
@@ -114,8 +163,10 @@ export default function FilterBar({
               <button
                 type="button"
                 onClick={() => {
-                  onPriorityChange(null)
+                  onPriorityChange([])
                   onTagIdsChange([])
+                  onStatusColumnIdsChange([])
+                  onDateFiltersChange([])
                 }}
                 className="mt-3.5 text-xs font-medium text-slate-500 transition hover:text-slate-300"
               >
