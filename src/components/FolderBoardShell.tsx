@@ -25,6 +25,7 @@ import SaveStatusLight from './SaveStatusLight'
 import GlobalAddButton from './GlobalAddButton'
 import OpenClaudeCodeButton from './OpenClaudeCodeButton'
 import { useViewModeStore } from '../store/viewMode'
+import { folderBoardKey, useDoneCollapseStore } from '../store/doneCollapse'
 import { BackIcon, ChevronIcon } from './icons'
 import type { BoardItem, Card, Folder, Priority } from '../types'
 
@@ -52,7 +53,9 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
-  const [doneCollapsed, setDoneCollapsed] = useState(false)
+  const boardKey = folderBoardKey(folder.id)
+  const doneCollapsed = useDoneCollapseStore((s) => s.collapsed[boardKey] ?? false)
+  const toggleDoneCollapsed = useDoneCollapseStore((s) => s.toggle)
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -194,7 +197,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                 headerAction = (
                   <button
                     type="button"
-                    onClick={() => setDoneCollapsed((v) => !v)}
+                    onClick={() => toggleDoneCollapsed(boardKey)}
                     aria-label={doneCollapsed ? 'Expand Done column' : 'Collapse Done column'}
                     title={doneCollapsed ? 'Expand column' : 'Collapse column'}
                     className="icon-btn shrink-0"
