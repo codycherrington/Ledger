@@ -479,17 +479,33 @@ describe('launchClaudeCode', () => {
     expect(script).toMatch(/claude\s+"\$\(cat '.*'\)"/)
   })
 
-  it('omits --continue when no session exists yet', () => {
+  it('never passes --continue to the main claude invocation, session or no session', () => {
     const script = scriptContent('/some/repo', 'do the thing')
-    expect(script).not.toContain('--continue')
+    expect(script).not.toMatch(/claude --continue/)
+    expect(script).not.toContain('RECAP')
   })
 
-  it('passes --continue when a session already exists for the repo path', () => {
+  it('generates a recap from the last session via a non-interactive claude -p --continue call when a session exists', () => {
     const encoded = '/some/repo'.replace(/\//g, '-')
     fs.mkdirSync(path.join(tmpClaudeProjectsDir, encoded), { recursive: true })
     fs.writeFileSync(path.join(tmpClaudeProjectsDir, encoded, 'session.jsonl'), '{}')
     const script = scriptContent('/some/repo', 'do the thing')
-    expect(script).toContain('claude --continue "$(cat')
+    expect(script).toMatch(/RECAP="\$\(claude -p '.*' --continue/)
+    // The main interactive call itself still never gets --continue — only
+    // the recap subprocess does.
+    expect(script).not.toMatch(/claude --continue/)
+  })
+
+  it('folds a produced recap into the prompt but falls back to the plain prompt if the recap call comes up empty', () => {
+    const encoded = '/some/repo'.replace(/\//g, '-')
+    fs.mkdirSync(path.join(tmpClaudeProjectsDir, encoded), { recursive: true })
+    fs.writeFileSync(path.join(tmpClaudeProjectsDir, encoded, 'session.jsonl'), '{}')
+    const script = scriptContent('/some/repo', 'do the thing')
+    expect(script).toContain('if [ -n "$RECAP" ]')
+    // $RECAP is only ever used as a double-quoted variable expansion, never
+    // interpolated unquoted or eval'd — same shell-injection guard as the
+    // prompt file mechanism below.
+    expect(script).toMatch(/\$RECAP"/)
   })
 
   it('writes the prompt to its own file rather than interpolating it into the script', () => {

@@ -93,6 +93,23 @@ export function ListIcon({ className = 'h-4 w-4' }: IconProps) {
   )
 }
 
+export function CopyIcon({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <rect x="9" y="9" width="12" height="12" rx="2" strokeLinejoin="round" />
+      <path d="M5 15V5a2 2 0 0 1 2-2h10" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+export function CheckIcon({ className = 'h-3.5 w-3.5' }: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>
+      <path d="M5 13l4 4L19 7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
 export function LinkIcon({ className = 'h-3 w-3' }: IconProps) {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={className}>

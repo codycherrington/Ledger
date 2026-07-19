@@ -4,6 +4,7 @@ import Modal from './Modal'
 import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
 import TagPicker from './TagPicker'
+import CopyButton from './CopyButton'
 import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
 import { selectOwnerColumns, useBoardStore } from '../store/board'
 import { buildTaskPrompt } from '../lib/claudeCode'
@@ -97,7 +98,7 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
         </Field>
       </div>
 
-      <Field label="Summary" className="mt-5">
+      <Field label="Summary" className="mt-5" action={summary.trim() && <CopyButton text={summary} label="Copy summary" />}>
         <textarea
           value={summary}
           onChange={(e) => setSummary(e.target.value)}
@@ -151,10 +152,23 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
   )
 }
 
-function Field({ label, className = '', children }: { label: string; className?: string; children: ReactNode }) {
+function Field({
+  label,
+  className = '',
+  action,
+  children,
+}: {
+  label: string
+  className?: string
+  action?: ReactNode
+  children: ReactNode
+}) {
   return (
     <div className={className}>
-      <p className="mb-2 text-[11px] font-medium tracking-wide text-slate-500 uppercase">{label}</p>
+      <div className="mb-2 flex items-center justify-between">
+        <p className="text-[11px] font-medium tracking-wide text-slate-500 uppercase">{label}</p>
+        {action}
+      </div>
       {children}
     </div>
   )

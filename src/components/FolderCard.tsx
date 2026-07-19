@@ -19,6 +19,7 @@ import Card from './Card'
 import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
 import TagPicker from './TagPicker'
+import CopyButton from './CopyButton'
 import { ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
 import type { Folder, Priority } from '../types'
 
@@ -263,7 +264,10 @@ function FolderFormModal({
           className="input mt-1.5"
           placeholder="e.g. Phase 1"
         />
-        <label className="mt-4 block text-sm font-medium text-slate-300">Description (optional)</label>
+        <div className="mt-4 flex items-center justify-between">
+          <label className="block text-sm font-medium text-slate-300">Description (optional)</label>
+          {description.trim() && <CopyButton text={description} label="Copy description" />}
+        </div>
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
