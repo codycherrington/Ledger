@@ -22,6 +22,7 @@ export default function Menu({ items, trigger }: MenuProps) {
           sideOffset={4}
           className="animate-pop-in bg-overlay z-50 min-w-[160px] rounded-xl border border-white/10 p-1 shadow-xl shadow-black/40"
           onClick={(e) => e.stopPropagation()}
+          onCloseAutoFocus={(e) => e.preventDefault()}
         >
           {items.map((item) => (
             <DropdownMenu.Item
