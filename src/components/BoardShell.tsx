@@ -25,9 +25,10 @@ import ViewToggle from './ViewToggle'
 import TableView from './TableView'
 import SaveStatusLight from './SaveStatusLight'
 import GlobalAddButton from './GlobalAddButton'
+import OpenClaudeCodeButton from './OpenClaudeCodeButton'
 import { useViewModeStore } from '../store/viewMode'
-import { BackIcon } from './icons'
-import type { BoardItem, ColumnOwnerType, Priority } from '../types'
+import { BackIcon, ChevronIcon } from './icons'
+import type { BoardItem, Card as CardType, ColumnOwnerType, Priority } from '../types'
 
 interface BoardShellProps {
   ownerType: ColumnOwnerType
@@ -86,6 +87,7 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [doneCollapsed, setDoneCollapsed] = useState(false)
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -97,21 +99,36 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
     return selectColumnItems(derivedState, columnId)
   }
 
-  function matchesFilters(item: BoardItem): boolean {
-    const title = item.kind === 'task' ? item.card.title : item.kind === 'project' ? item.project.name : item.folder.name
+  function matchesTaskFields(title: string, columnId: string, priority: Priority | undefined, tagIds: string[], dueDate: string | undefined): boolean {
     if (search && !title.toLowerCase().includes(search.toLowerCase())) return false
-    const columnId = item.kind === 'task' ? item.card.columnId : item.kind === 'project' ? item.project.columnId : item.folder.columnId
     if (!matchesStatusFilter(columnId, statusFilter)) return false
-    // Projects have no priority/tags/due date, so any of those facets being
-    // active simply excludes them rather than trying to match against them.
-    if (item.kind === 'project') return priorityFilter.length === 0 && tagFilter.length === 0 && dateFilter.length === 0
-    const priority = item.kind === 'task' ? item.card.priority : item.folder.priority
-    const tagIds = item.kind === 'task' ? item.card.tagIds : item.folder.tagIds
-    const dueDate = item.kind === 'task' ? item.card.dueDate : item.folder.dueDate
     if (!matchesPriorityFilter(priority, priorityFilter)) return false
     if (tagFilter.length > 0 && !tagFilter.every((t) => tagIds.includes(t))) return false
     if (!matchesDateFilter(dueDate, dateFilter)) return false
     return true
+  }
+
+  function taskMatchesFilters(card: CardType): boolean {
+    return matchesTaskFields(card.title, card.columnId, card.priority, card.tagIds, card.dueDate)
+  }
+
+  function matchesFilters(item: BoardItem): boolean {
+    if (item.kind === 'project') {
+      if (search && !item.project.name.toLowerCase().includes(search.toLowerCase())) return false
+      if (!matchesStatusFilter(item.project.columnId, statusFilter)) return false
+      // Projects have no priority/tags/due date, so any of those facets being
+      // active simply excludes them rather than trying to match against them.
+      return priorityFilter.length === 0 && tagFilter.length === 0 && dateFilter.length === 0
+    }
+    if (item.kind === 'task') return taskMatchesFilters(item.card)
+    // A folder matches if its own fields match, or if any task filed inside
+    // it does — otherwise a filter would hide a matching task just because
+    // the folder wrapping it doesn't itself match.
+    if (matchesTaskFields(item.folder.name, item.folder.columnId, item.folder.priority, item.folder.tagIds, item.folder.dueDate)) return true
+    return item.folder.taskIds.some((id) => {
+      const card = cards[id]
+      return card ? taskMatchesFilters(card) : false
+    })
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -205,7 +222,6 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
     setSelectedIds(new Set())
   }
 
-  const showTypeColumn = ownerType === 'home'
   // TableView pulls a folder's own children in itself (gated on which
   // folders are expanded) — nothing here needs to pre-flatten them too.
   const allItems = columns.flatMap((c) => itemsForColumn(c.id))
@@ -243,6 +259,7 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
         onStatusColumnIdsChange={setStatusFilter}
         dateFilters={dateFilter}
         onDateFiltersChange={setDateFilter}
+        action={claudeCodeReady && project?.repoPath ? <OpenClaudeCodeButton repoPath={project.repoPath} /> : undefined}
       />
 
       {view === 'table' ? (
@@ -253,7 +270,8 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
           <TableView
             items={allItems.filter(matchesFilters)}
             columns={columns}
-            showTypeColumn={showTypeColumn}
+            showTypeColumn
+            folderTaskFilter={taskMatchesFilters}
             onOpenCard={setOpenCardId}
             onMoveItem={(itemId, columnId) => {
               const item = resolveItem(useBoardStore.getState(), itemId)
@@ -299,8 +317,29 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
                     Launch all
                   </button>
                 )
+              } else if (column.name === 'Done') {
+                headerAction = (
+                  <button
+                    type="button"
+                    onClick={() => setDoneCollapsed((v) => !v)}
+                    aria-label={doneCollapsed ? 'Expand Done column' : 'Collapse Done column'}
+                    title={doneCollapsed ? 'Expand column' : 'Collapse column'}
+                    className="icon-btn shrink-0"
+                  >
+                    <ChevronIcon className={`h-3.5 w-3.5 transition ${doneCollapsed ? '' : 'rotate-90'}`} />
+                  </button>
+                )
               }
-              return <Column key={column.id} column={column} items={columnItems} onOpenCard={setOpenCardId} headerAction={headerAction} />
+              return (
+                <Column
+                  key={column.id}
+                  column={column}
+                  items={columnItems}
+                  onOpenCard={setOpenCardId}
+                  headerAction={headerAction}
+                  collapsed={column.name === 'Done' && doneCollapsed}
+                />
+              )
             })}
             {stashColumn && (
               <>

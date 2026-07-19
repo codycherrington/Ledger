@@ -6,6 +6,7 @@ import { useShallow } from 'zustand/react/shallow'
 import { COLOR_CLASSES, COLOR_NAMES, PRIORITY_COLOR, type ColorName } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { useSortableItem } from '../lib/useSortableItem'
+import { buildTaskPrompt } from '../lib/claudeCode'
 import {
   selectAllTags,
   selectFolderTasks,
@@ -38,6 +39,10 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
   const colorClasses = COLOR_CLASSES[folder.color as ColorName] ?? COLOR_CLASSES.slate
   const allTags = useBoardStore(useShallow(selectAllTags))
   const folderTags = allTags.filter((t) => folder.tagIds.includes(t.id))
+  const folderTasks = useBoardStore(useShallow((s) => selectFolderTasks(s, folder.id)))
+  // Description first, then every filed task's own title/summary below it —
+  // one paste gives Claude Code the folder's context plus everything in it.
+  const copyText = [folder.description, buildTaskPrompt(folderTasks)].filter(Boolean).join('\n\n')
 
   return (
     <>
@@ -67,6 +72,14 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
           >
             <InfoIcon className="h-3.5 w-3.5" />
           </button>
+          {folder.description?.trim() && (
+            <span
+              onClick={(e) => e.stopPropagation()}
+              className="float-right mb-1 ml-2 opacity-0 transition group-hover:opacity-100"
+            >
+              <CopyButton text={copyText} label="Copy description" />
+            </span>
+          )}
           <ItemTypeBadge kind="folder" />
           <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
             <button
