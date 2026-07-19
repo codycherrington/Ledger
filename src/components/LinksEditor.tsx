@@ -8,11 +8,41 @@ interface LinksEditorProps {
   onAdd: (label: string, url: string) => void
   onUpdate: (linkId: string, patch: Partial<Pick<ResourceLink, 'label' | 'url'>>) => void
   onRemove: (linkId: string) => void
+  /** Read-only display: just the link list with an "Open" action, no editing controls. */
+  readOnly?: boolean
 }
 
-export default function LinksEditor({ links, onAdd, onUpdate, onRemove }: LinksEditorProps) {
+export default function LinksEditor({ links, onAdd, onUpdate, onRemove, readOnly }: LinksEditorProps) {
   const [label, setLabel] = useState('')
   const [url, setUrl] = useState('')
+
+  if (readOnly) {
+    if (links.length === 0) return <p className="text-xs text-slate-600">No resources added.</p>
+    return (
+      <div className="space-y-1.5">
+        {links.map((link) => {
+          const href = safeHref(link.url)
+          return (
+            <div key={link.id} className="flex items-center gap-2 text-sm">
+              <LinkIcon className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+              {href ? (
+                <a
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="truncate text-indigo-400 hover:text-indigo-300 hover:underline"
+                >
+                  {link.label || link.url}
+                </a>
+              ) : (
+                <span className="truncate text-slate-300">{link.label || link.url}</span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-2">
