@@ -5,8 +5,9 @@ import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
 import TagPicker from './TagPicker'
 import CopyButton from './CopyButton'
-import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
-import { selectOwnerColumns, useBoardStore } from '../store/board'
+import { COLOR_CLASSES, PRIORITY_COLOR, STATUS_COLOR, type ColorName } from '../lib/colors'
+import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
+import { selectAllTags, selectOwnerColumns, useBoardStore } from '../store/board'
 import { buildTaskPrompt } from '../lib/claudeCode'
 import type { Card as CardType, Priority } from '../types'
 
@@ -15,6 +16,7 @@ const PRIORITIES: { value: Priority; label: string }[] = [
   { value: 'med', label: 'Medium' },
   { value: 'high', label: 'High' },
 ]
+const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', high: 'High' }
 
 interface CardDetailDialogProps {
   cardId: string
@@ -29,12 +31,14 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
   const project = useBoardStore((s) => (card?.projectId ? s.projects[card.projectId] : undefined))
   const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
+  const [mode, setMode] = useState<'view' | 'edit'>('view')
   const [title, setTitle] = useState(card?.title ?? '')
   const [summary, setSummary] = useState(card?.summary ?? '')
 
   useEffect(() => {
     setTitle(card?.title ?? '')
     setSummary(card?.summary ?? '')
+    setMode('view')
   }, [card?.id, card?.title, card?.summary])
 
   if (!card) return null
@@ -49,6 +53,12 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
     if (summary !== (card!.summary ?? '')) updateCard(card!.id, { summary: summary || undefined })
   }
 
+  function handleSave() {
+    commitTitle()
+    commitSummary()
+    setMode('view')
+  }
+
   function handleDelete() {
     if (window.confirm(`Delete "${card!.title}"?`)) {
       deleteCard(card!.id)
@@ -56,98 +66,147 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
     }
   }
 
+  const canStartClaude = project && project.claudeCodeEnabled && project.repoPath
+
   return (
-    <Modal open onOpenChange={(open) => !open && onClose()} title={card.title} size="lg" hideVisualTitle>
-      <input
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        onBlur={commitTitle}
-        onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
-        className="-mt-8 mb-5 w-full rounded-lg border border-transparent px-1.5 py-1 text-lg font-semibold text-slate-100 transition hover:border-white/10 focus:border-indigo-400/50 focus:outline-none"
-      />
+    <Modal
+      open
+      onOpenChange={(open) => !open && onClose()}
+      title={card.title}
+      size="lg"
+      hideVisualTitle
+      footer={
+        <div className="flex items-center justify-between">
+          {mode === 'view' ? (
+            <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
+              Edit
+            </button>
+          ) : (
+            <button type="button" onClick={handleSave} className="btn-primary">
+              Save
+            </button>
+          )}
+          <div className="flex items-center gap-2">
+            {mode === 'view' && canStartClaude && (
+              <button
+                type="button"
+                onClick={() => startClaudeCode(project.repoPath!, buildTaskPrompt([card]))}
+                className="rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/30"
+              >
+                Start with Claude Code
+              </button>
+            )}
+            {mode === 'view' ? (
+              <button type="button" onClick={onClose} className="btn-primary">
+                Done
+              </button>
+            ) : (
+              <button type="button" onClick={handleDelete} className="btn-danger">
+                Delete
+              </button>
+            )}
+          </div>
+        </div>
+      }
+    >
+      {mode === 'edit' ? (
+        <input
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={commitTitle}
+          onKeyDown={(e) => e.key === 'Enter' && (e.currentTarget as HTMLInputElement).blur()}
+          className="mb-5 w-full rounded-lg border border-transparent px-1.5 py-1 text-lg font-semibold text-slate-100 transition hover:border-white/10 focus:border-indigo-400/50 focus:outline-none"
+        />
+      ) : (
+        <p className="mb-5 px-1.5 py-1 text-lg font-semibold text-slate-100">{card.title}</p>
+      )}
 
       <div className="grid grid-cols-3 gap-4">
         <Field label="Status">
-          <StatusSection card={card} />
+          <StatusSection card={card} readOnly={mode === 'view'} />
         </Field>
         <Field label="Priority">
-          <div className="flex gap-1.5">
-            {PRIORITIES.map((p) => (
-              <button
-                key={p.value}
-                type="button"
-                onClick={() => updateCard(card.id, { priority: card.priority === p.value ? undefined : p.value })}
-                className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
-                  card.priority === p.value
-                    ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
-                    : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
-                }`}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
+          {mode === 'edit' ? (
+            <div className="flex gap-1.5">
+              {PRIORITIES.map((p) => (
+                <button
+                  key={p.value}
+                  type="button"
+                  onClick={() => updateCard(card.id, { priority: card.priority === p.value ? undefined : p.value })}
+                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+                    card.priority === p.value
+                      ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
+                      : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+                  }`}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          ) : card.priority ? (
+            <span
+              className={`inline-block rounded-lg border px-2.5 py-1 text-xs font-medium ${COLOR_CLASSES[PRIORITY_COLOR[card.priority]].bgSoft} ${COLOR_CLASSES[PRIORITY_COLOR[card.priority]].text} ${COLOR_CLASSES[PRIORITY_COLOR[card.priority]].border}`}
+            >
+              {PRIORITY_LABEL[card.priority]}
+            </span>
+          ) : (
+            <p className="text-xs text-slate-600">No priority</p>
+          )}
         </Field>
         <Field label="Due date">
-          <input
-            type="date"
-            value={card.dueDate ?? ''}
-            onChange={(e) => updateCard(card.id, { dueDate: e.target.value || undefined })}
-            className="input w-auto px-2.5 py-1.5 [color-scheme:dark]"
-          />
+          {mode === 'edit' ? (
+            <input
+              type="date"
+              value={card.dueDate ?? ''}
+              onChange={(e) => updateCard(card.id, { dueDate: e.target.value || undefined })}
+              className="input w-auto px-2.5 py-1.5 [color-scheme:dark]"
+            />
+          ) : card.dueDate ? (
+            <p
+              className={`text-sm font-medium ${
+                isOverdue(card.dueDate) ? 'text-rose-300' : isDueToday(card.dueDate) ? 'text-amber-300' : 'text-slate-300'
+              }`}
+            >
+              {formatDueDate(card.dueDate)}
+            </p>
+          ) : (
+            <p className="text-xs text-slate-600">No due date</p>
+          )}
         </Field>
       </div>
 
       <Field label="Summary" className="mt-5" action={summary.trim() && <CopyButton text={summary} label="Copy summary" />}>
-        <textarea
-          value={summary}
-          onChange={(e) => setSummary(e.target.value)}
-          onBlur={commitSummary}
-          rows={3}
-          placeholder="What is this task about?"
-          className="input resize-none"
-        />
+        {mode === 'edit' ? (
+          <textarea
+            value={summary}
+            onChange={(e) => setSummary(e.target.value)}
+            onBlur={commitSummary}
+            rows={8}
+            placeholder="What is this task about?"
+            className="input resize-none"
+          />
+        ) : card.summary?.trim() ? (
+          <p className="text-sm whitespace-pre-wrap text-slate-300">{card.summary}</p>
+        ) : (
+          <p className="text-xs text-slate-600">No summary added.</p>
+        )}
       </Field>
 
       <Field label="Tags" className="mt-5">
-        <TagPicker activeTagIds={card.tagIds} onToggle={(tagId) => toggleCardTag(card.id, tagId)} />
+        {mode === 'edit' ? (
+          <TagPicker activeTagIds={card.tagIds} onToggle={(tagId) => toggleCardTag(card.id, tagId)} />
+        ) : (
+          <CardTagsView card={card} />
+        )}
       </Field>
 
       <Field label="Resources" className="mt-5">
-        <CardLinksSection card={card} />
+        <CardLinksSection card={card} readOnly={mode === 'view'} />
       </Field>
 
       <Field label="Attachments" className="mt-5">
-        <CardAttachmentsSection card={card} />
+        <CardAttachmentsSection card={card} readOnly={mode === 'view'} />
       </Field>
-
-      <div className="mt-7 flex items-center justify-between border-t border-white/[0.06] pt-4">
-        <button type="button" onClick={handleDelete} className="btn-danger-link">
-          Delete card
-        </button>
-        <div className="flex items-center gap-2">
-          {project && project.claudeCodeEnabled && project.repoPath && (
-            <button
-              type="button"
-              onClick={() => startClaudeCode(project.repoPath!, buildTaskPrompt([card]))}
-              className="rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/30"
-            >
-              Start with Claude
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => {
-              commitTitle()
-              commitSummary()
-              onClose()
-            }}
-            className="btn-primary"
-          >
-            Save
-          </button>
-        </div>
-      </div>
     </Modal>
   )
 }
@@ -174,7 +233,7 @@ function Field({
   )
 }
 
-function StatusSection({ card }: { card: CardType }) {
+function StatusSection({ card, readOnly }: { card: CardType; readOnly?: boolean }) {
   // A task's 4 status options come from whichever board it (or its folder,
   // if filed) ultimately belongs to: the project's board if it has one, or
   // Home's board for a standalone task.
@@ -182,6 +241,17 @@ function StatusSection({ card }: { card: CardType }) {
     useShallow((s) => selectOwnerColumns(s, card.projectId ? 'project' : 'home', card.projectId)),
   )
   const setCardStatus = useBoardStore((s) => s.setCardStatus)
+
+  if (readOnly) {
+    const col = columns.find((c) => c.id === card.columnId)
+    if (!col) return <p className="text-xs text-slate-600">—</p>
+    const cls = COLOR_CLASSES[STATUS_COLOR[col.name] ?? 'slate']
+    return (
+      <span className={`inline-block rounded-lg border px-2.5 py-1 text-xs font-medium ${cls.bgSoft} ${cls.text} ${cls.border}`}>
+        {col.name}
+      </span>
+    )
+  }
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -205,7 +275,25 @@ function StatusSection({ card }: { card: CardType }) {
   )
 }
 
-function CardLinksSection({ card }: { card: CardType }) {
+function CardTagsView({ card }: { card: CardType }) {
+  const allTags = useBoardStore(useShallow(selectAllTags))
+  const tags = allTags.filter((t) => card.tagIds.includes(t.id))
+  if (tags.length === 0) return <p className="text-xs text-slate-600">No tags</p>
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => {
+        const cls = COLOR_CLASSES[tag.color as ColorName] ?? COLOR_CLASSES.slate
+        return (
+          <span key={tag.id} className={`rounded-full px-2.5 py-1 text-xs font-medium ${cls.bgSoft} ${cls.text}`}>
+            {tag.name}
+          </span>
+        )
+      })}
+    </div>
+  )
+}
+
+function CardLinksSection({ card, readOnly }: { card: CardType; readOnly?: boolean }) {
   const addLink = useBoardStore((s) => s.addLink)
   const updateLink = useBoardStore((s) => s.updateLink)
   const removeLink = useBoardStore((s) => s.removeLink)
@@ -216,11 +304,12 @@ function CardLinksSection({ card }: { card: CardType }) {
       onAdd={(label, url) => addLink(card.id, label, url)}
       onUpdate={(linkId, patch) => updateLink(card.id, linkId, patch)}
       onRemove={(linkId) => removeLink(card.id, linkId)}
+      readOnly={readOnly}
     />
   )
 }
 
-function CardAttachmentsSection({ card }: { card: CardType }) {
+function CardAttachmentsSection({ card, readOnly }: { card: CardType; readOnly?: boolean }) {
   const addAttachment = useBoardStore((s) => s.addAttachment)
   const removeAttachment = useBoardStore((s) => s.removeAttachment)
 
@@ -229,6 +318,7 @@ function CardAttachmentsSection({ card }: { card: CardType }) {
       attachments={card.attachments}
       onAdd={(file) => addAttachment(card.id, file)}
       onRemove={(attachmentId) => removeAttachment(card.id, attachmentId)}
+      readOnly={readOnly}
     />
   )
 }

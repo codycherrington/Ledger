@@ -8,10 +8,23 @@ interface AttachmentsEditorProps {
   attachments: AttachmentMeta[]
   onAdd: (file: File) => Promise<void>
   onRemove: (attachmentId: string) => Promise<void>
+  /** Read-only display: attachments listed with a Download link, no upload/remove controls. */
+  readOnly?: boolean
 }
 
-export default function AttachmentsEditor({ attachments, onAdd, onRemove }: AttachmentsEditorProps) {
+export default function AttachmentsEditor({ attachments, onAdd, onRemove, readOnly }: AttachmentsEditorProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  if (readOnly) {
+    if (attachments.length === 0) return <p className="text-xs text-slate-600">No attachments added.</p>
+    return (
+      <div className="space-y-2">
+        {attachments.map((att) => (
+          <AttachmentRow key={att.id} attachment={att} onRemove={onRemove} readOnly />
+        ))}
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-2">
@@ -42,9 +55,11 @@ export default function AttachmentsEditor({ attachments, onAdd, onRemove }: Atta
 function AttachmentRow({
   attachment,
   onRemove,
+  readOnly,
 }: {
   attachment: AttachmentMeta
   onRemove: (attachmentId: string) => Promise<void>
+  readOnly?: boolean
 }) {
   const [url, setUrl] = useState<string | null>(null)
 
@@ -83,9 +98,11 @@ function AttachmentRow({
           Download
         </a>
       )}
-      <button type="button" onClick={() => void onRemove(attachment.id)} className="btn-danger-link shrink-0">
-        Remove
-      </button>
+      {!readOnly && (
+        <button type="button" onClick={() => void onRemove(attachment.id)} className="btn-danger-link shrink-0">
+          Remove
+        </button>
+      )}
     </div>
   )
 }
