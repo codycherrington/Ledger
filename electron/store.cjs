@@ -3,6 +3,8 @@
 const fs = require('node:fs')
 const os = require('node:os')
 const path = require('node:path')
+const crypto = require('node:crypto')
+const { spawn } = require('node:child_process')
 const { encodeCsv, parseCsv } = require('./csv.cjs')
 
 // Portable per-user location, same for the dev server and any built/installed
@@ -58,7 +60,19 @@ const orUndefined = (str) => (str === '' ? undefined : str)
 const TABLES = {
   projects: {
     file: 'projects.csv',
-    headers: ['id', 'name', 'description', 'links', 'attachments', 'createdAt', 'updatedAt', 'columnOrder', 'columnId'],
+    headers: [
+      'id',
+      'name',
+      'description',
+      'links',
+      'attachments',
+      'createdAt',
+      'updatedAt',
+      'columnOrder',
+      'columnId',
+      'claudeCodeEnabled',
+      'repoPath',
+    ],
     toRow: (p) => ({
       id: p.id,
       name: p.name,
@@ -69,6 +83,8 @@ const TABLES = {
       updatedAt: p.updatedAt,
       columnOrder: joinIds(p.columnOrder),
       columnId: p.columnId ?? '',
+      claudeCodeEnabled: p.claudeCodeEnabled ? 'true' : '',
+      repoPath: p.repoPath ?? '',
     }),
     fromRow: (r) => ({
       id: r.id,
@@ -82,6 +98,10 @@ const TABLES = {
       // Legacy rows predate the Home board and have no columnId; backfilled
       // into Home's "To Do" column by ensureFixedPhases on next rehydrate.
       columnId: r.columnId ?? '',
+      // Legacy rows predate the Claude Code integration and have neither
+      // column — both correctly fall back to disabled/unset.
+      claudeCodeEnabled: r.claudeCodeEnabled === 'true',
+      repoPath: orUndefined(r.repoPath),
     }),
   },
   columns: {
@@ -358,6 +378,74 @@ function deleteAttachment(id) {
   if (filePath) fs.rmSync(filePath, { force: true })
 }
 
+// Claude Code keys its own per-project session history off the cwd it
+// was launched in, stored under ~/.claude/projects/<encoded-path>/*.jsonl
+// (encoding: the absolute path with every "/" replaced by "-"). Checking for
+// an existing session there is how launchClaudeCode decides whether to
+// resume (--continue) or start fresh. LEDGER_CLAUDE_PROJECTS_DIR overrides
+// this for tests only, so they never touch the real ~/.claude directory.
+const CLAUDE_PROJECTS_DIR = process.env.LEDGER_CLAUDE_PROJECTS_DIR || path.join(os.homedir(), '.claude', 'projects')
+
+function encodeClaudeProjectDir(repoPath) {
+  return repoPath.replace(/\//g, '-')
+}
+
+function hasExistingSession(repoPath) {
+  const dir = path.join(CLAUDE_PROJECTS_DIR, encodeClaudeProjectDir(repoPath))
+  if (!fs.existsSync(dir)) return false
+  return fs.readdirSync(dir).some((f) => f.endsWith('.jsonl'))
+}
+
+// Single-quotes a value for safe embedding in a POSIX shell command:
+// wraps it in '...' and escapes any embedded single quote as '\''. Used for
+// repoPath and the prompt file path below, both of which come from a native
+// folder picker / this process's own tmp naming rather than user-typed text,
+// but are quoted defensively regardless.
+function shellQuoteSingle(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`
+}
+
+// Launches Claude Code in a real Terminal.app window rather than spawning it
+// directly from this (Electron) process: apps launched via Finder/
+// LaunchServices don't inherit the user's shell PATH, so a direct spawn of
+// "claude" would frequently fail with "command not found" even though it
+// works fine when the user runs it by hand. Terminal.app sources the user's
+// normal shell profile, so PATH resolution matches the command line exactly.
+//
+// The task prompt is never interpolated into the script's source text — it's
+// written to its own temp file and read back via `"$(cat '<file>')"` at
+// script run time. Double-quoting that command substitution suppresses word
+// splitting and globbing, so arbitrary prompt content (quotes, backticks,
+// "$", newlines) passes through inert instead of being re-parsed as shell
+// syntax.
+//
+// LEDGER_DISABLE_CLAUDE_LAUNCH skips the actual `open -a Terminal` spawn —
+// set only by the test file, so tests can inspect the generated script/prompt
+// files without ever opening a real Terminal window or running the `claude`
+// CLI. Never set when actually running the app.
+function launchClaudeCode(repoPath, prompt) {
+  const id = crypto.randomUUID()
+  const promptFile = path.join(os.tmpdir(), `ledger-claude-prompt-${id}.txt`)
+  const scriptFile = path.join(os.tmpdir(), `ledger-claude-launch-${id}.command`)
+
+  fs.writeFileSync(promptFile, prompt ?? '')
+
+  const resumeFlag = hasExistingSession(repoPath) ? '--continue ' : ''
+  const script = [
+    '#!/bin/zsh',
+    `cd ${shellQuoteSingle(repoPath)}`,
+    `claude ${resumeFlag}"$(cat ${shellQuoteSingle(promptFile)})"`,
+    '',
+  ].join('\n')
+  fs.writeFileSync(scriptFile, script)
+  fs.chmodSync(scriptFile, 0o755)
+
+  if (process.env.LEDGER_DISABLE_CLAUDE_LAUNCH) return { scriptFile, promptFile }
+
+  spawn('open', ['-a', 'Terminal', scriptFile], { detached: true, stdio: 'ignore' }).unref()
+  return { scriptFile, promptFile }
+}
+
 module.exports = {
   DATA_DIR,
   ensureDirs,
@@ -366,4 +454,6 @@ module.exports = {
   putAttachment,
   getAttachment,
   deleteAttachment,
+  hasExistingSession,
+  launchClaudeCode,
 }

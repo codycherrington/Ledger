@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/core'
 import { arrayMove } from '@dnd-kit/sortable'
 import { resolveItem, selectColumnItems, selectOwnerColumns, useBoardStore } from '../store/board'
+import { buildTaskPrompt } from '../lib/claudeCode'
 import Column from './Column'
 import { CardBody } from './Card'
 import CardDetailDialog from './CardDetailDialog'
@@ -73,12 +74,14 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const unfileTaskFromFolder = useBoardStore((s) => s.unfileTaskFromFolder)
   const reorderFolderTasks = useBoardStore((s) => s.reorderFolderTasks)
   const setCardStatus = useBoardStore((s) => s.setCardStatus)
+  const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [activeItem, setActiveItem] = useState<BoardItem | null>(null)
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority | null>(null)
   const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -172,6 +175,26 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const activeColumns = columns.filter((c) => c.name !== 'NULLSPACE')
   const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
 
+  const project = ownerType === 'project' && ownerId ? projects[ownerId] : undefined
+  const claudeCodeReady = Boolean(project?.claudeCodeEnabled && project.repoPath)
+
+  function toggleSelected(cardId: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(cardId)) next.delete(cardId)
+      else next.add(cardId)
+      return next
+    })
+  }
+
+  function startClaudeCodeForSelection() {
+    if (!project?.repoPath) return
+    const selectedCards = [...selectedIds].map((id) => cards[id]).filter((c): c is NonNullable<typeof c> => Boolean(c))
+    if (selectedCards.length === 0) return
+    void startClaudeCode(project.repoPath, buildTaskPrompt(selectedCards))
+    setSelectedIds(new Set())
+  }
+
   const showTypeColumn = ownerType === 'home'
   // TableView pulls a folder's own children in itself (gated on which
   // folders are expanded) — nothing here needs to pre-flatten them too.
@@ -216,6 +239,9 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
             if (item?.kind === 'task' && item.card.folderId) setCardStatus(itemId, columnId)
             else moveItem(itemId, columnId, 0)
           }}
+          selectable={claudeCodeReady}
+          selectedIds={selectedIds}
+          onToggleSelect={toggleSelected}
         />
       ) : (
         <DndContext
@@ -260,6 +286,28 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
             ) : null}
           </DragOverlay>
         </DndContext>
+      )}
+
+      {claudeCodeReady && selectedIds.size > 0 && (
+        <div className="no-drag fixed bottom-5 left-1/2 z-40 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-white/10 bg-raised px-4 py-2.5 shadow-xl shadow-black/40">
+          <span className="text-xs font-medium text-slate-400">
+            {selectedIds.size} task{selectedIds.size === 1 ? '' : 's'} selected
+          </span>
+          <button
+            type="button"
+            onClick={startClaudeCodeForSelection}
+            className="rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/30"
+          >
+            Start in Claude Code
+          </button>
+          <button
+            type="button"
+            onClick={() => setSelectedIds(new Set())}
+            className="text-xs font-medium text-slate-500 transition hover:text-slate-300"
+          >
+            Clear
+          </button>
+        </div>
       )}
 
       {openCardId && <CardDetailDialog cardId={openCardId} onClose={() => setOpenCardId(null)} />}

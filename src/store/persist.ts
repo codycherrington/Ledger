@@ -10,6 +10,8 @@ export interface BoardFS {
   putAttachment: (id: string, name: string, data: ArrayBuffer) => Promise<void>
   getAttachment: (id: string) => Promise<{ name: string; data: Uint8Array } | null>
   deleteAttachment: (id: string) => Promise<void>
+  pickFolder: () => Promise<string | null>
+  launchClaudeCode: (repoPath: string, prompt: string) => Promise<void>
 }
 
 declare global {
