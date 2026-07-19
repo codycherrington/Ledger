@@ -15,6 +15,8 @@ import {
 import { arrayMove } from '@dnd-kit/sortable'
 import { resolveItem, selectColumnItems, selectOwnerColumns, useBoardStore } from '../store/board'
 import { buildTaskPrompt } from '../lib/claudeCode'
+import { matchesDateFilter, matchesPriorityFilter, matchesStatusFilter, type DateFilter } from '../lib/filters'
+import BoardPath from './BoardPath'
 import Column from './Column'
 import { CardBody } from './Card'
 import CardDetailDialog from './CardDetailDialog'
@@ -79,8 +81,10 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [activeItem, setActiveItem] = useState<BoardItem | null>(null)
   const [search, setSearch] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState<Priority | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([])
   const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
@@ -96,11 +100,17 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   function matchesFilters(item: BoardItem): boolean {
     const title = item.kind === 'task' ? item.card.title : item.kind === 'project' ? item.project.name : item.folder.name
     if (search && !title.toLowerCase().includes(search.toLowerCase())) return false
-    if (item.kind === 'project') return !priorityFilter && tagFilter.length === 0
+    const columnId = item.kind === 'task' ? item.card.columnId : item.kind === 'project' ? item.project.columnId : item.folder.columnId
+    if (!matchesStatusFilter(columnId, statusFilter)) return false
+    // Projects have no priority/tags/due date, so any of those facets being
+    // active simply excludes them rather than trying to match against them.
+    if (item.kind === 'project') return priorityFilter.length === 0 && tagFilter.length === 0 && dateFilter.length === 0
     const priority = item.kind === 'task' ? item.card.priority : item.folder.priority
     const tagIds = item.kind === 'task' ? item.card.tagIds : item.folder.tagIds
-    if (priorityFilter && priority !== priorityFilter) return false
+    const dueDate = item.kind === 'task' ? item.card.dueDate : item.folder.dueDate
+    if (!matchesPriorityFilter(priority, priorityFilter)) return false
     if (tagFilter.length > 0 && !tagFilter.every((t) => tagIds.includes(t))) return false
+    if (!matchesDateFilter(dueDate, dateFilter)) return false
     return true
   }
 
@@ -209,7 +219,11 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
               <BackIcon />
             </button>
           )}
-          <h1 className="truncate text-[15px] font-semibold text-slate-100">{title}</h1>
+          {ownerType === 'project' ? (
+            <BoardPath segments={[{ label: 'Home', path: '/' }]} current={title} />
+          ) : (
+            <h1 className="truncate text-[15px] font-semibold text-slate-100">{title}</h1>
+          )}
         </div>
         <div className="flex items-center gap-3">
           <SaveStatusLight />
@@ -224,6 +238,11 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
         onPriorityChange={setPriorityFilter}
         tagIds={tagFilter}
         onTagIdsChange={setTagFilter}
+        columns={columns}
+        statusColumnIds={statusFilter}
+        onStatusColumnIdsChange={setStatusFilter}
+        dateFilters={dateFilter}
+        onDateFiltersChange={setDateFilter}
       />
 
       {view === 'table' ? (

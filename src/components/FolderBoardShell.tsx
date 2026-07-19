@@ -13,6 +13,8 @@ import {
 } from '@dnd-kit/core'
 import { reorderFolderTaskIdsWithinColumn, selectOwnerColumns, useBoardStore } from '../store/board'
 import { buildTaskPrompt } from '../lib/claudeCode'
+import { matchesDateFilter, matchesPriorityFilter, matchesStatusFilter, type DateFilter } from '../lib/filters'
+import BoardPath from './BoardPath'
 import Column from './Column'
 import { CardBody } from './Card'
 import CardDetailDialog from './CardDetailDialog'
@@ -45,8 +47,10 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [activeCard, setActiveCard] = useState<Card | null>(null)
   const [search, setSearch] = useState('')
-  const [priorityFilter, setPriorityFilter] = useState<Priority | null>(null)
+  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([])
   const [tagFilter, setTagFilter] = useState<string[]>([])
+  const [statusFilter, setStatusFilter] = useState<string[]>([])
+  const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -54,8 +58,10 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
 
   function matchesFilters(card: Card): boolean {
     if (search && !card.title.toLowerCase().includes(search.toLowerCase())) return false
-    if (priorityFilter && card.priority !== priorityFilter) return false
+    if (!matchesPriorityFilter(card.priority, priorityFilter)) return false
     if (tagFilter.length > 0 && !tagFilter.every((t) => card.tagIds.includes(t))) return false
+    if (!matchesDateFilter(card.dueDate, dateFilter)) return false
+    if (!matchesStatusFilter(card.columnId, statusFilter)) return false
     return true
   }
 
@@ -108,6 +114,9 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const project = folder.ownerType === 'project' && folder.ownerId ? projects[folder.ownerId] : undefined
   const claudeCodeReady = Boolean(project?.claudeCodeEnabled && project.repoPath)
 
+  const pathSegments = [{ label: 'Home', path: '/' }]
+  if (project) pathSegments.push({ label: project.name, path: `/project/${project.id}` })
+
   return (
     <div className="flex h-screen flex-col">
       <header className="app-drag flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] pr-4 pl-[88px]">
@@ -115,7 +124,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
           <button type="button" onClick={onBack} aria-label="Back" className="icon-btn no-drag">
             <BackIcon />
           </button>
-          <h1 className="truncate text-[15px] font-semibold text-slate-100">{folder.name}</h1>
+          <BoardPath segments={pathSegments} current={folder.name} />
         </div>
         <div className="flex items-center gap-3">
           <SaveStatusLight />
@@ -130,6 +139,11 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
         onPriorityChange={setPriorityFilter}
         tagIds={tagFilter}
         onTagIdsChange={setTagFilter}
+        columns={columns}
+        statusColumnIds={statusFilter}
+        onStatusColumnIdsChange={setStatusFilter}
+        dateFilters={dateFilter}
+        onDateFiltersChange={setDateFilter}
       />
 
       {view === 'table' ? (
