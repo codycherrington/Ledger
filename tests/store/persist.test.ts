@@ -18,7 +18,7 @@ describe('boardStorage', () => {
   it('getItem returns null when the bridge reports no saved state', async () => {
     window.boardFS = createMockBoardFS()
     const storage = boardStorage()
-    await expect(storage.getItem('tasktray-store')).resolves.toBeNull()
+    await expect(storage.getItem('ledger-store')).resolves.toBeNull()
   })
 
   it('getItem wraps the loaded state as { state, version: 0 }', async () => {
@@ -26,13 +26,13 @@ describe('boardStorage', () => {
     window.boardFS = createMockBoardFS()
     window.boardFS.loadState = vi.fn(async () => fakeState)
     const storage = boardStorage()
-    await expect(storage.getItem('tasktray-store')).resolves.toEqual({ state: fakeState, version: 0 })
+    await expect(storage.getItem('ledger-store')).resolves.toEqual({ state: fakeState, version: 0 })
   })
 
   it('setItem tracks saving -> saved status around a successful save', async () => {
     window.boardFS = createMockBoardFS()
     const storage = boardStorage()
-    await storage.setItem('tasktray-store', { state: {}, version: 0 })
+    await storage.setItem('ledger-store', { state: {}, version: 0 })
     expect(window.boardFS.saveState).toHaveBeenCalledWith({})
     expect(useSaveStatusStore.getState().status).toBe('saved')
   })
@@ -44,14 +44,14 @@ describe('boardStorage', () => {
       throw failure
     })
     const storage = boardStorage()
-    await expect(storage.setItem('tasktray-store', { state: {}, version: 0 })).rejects.toThrow('disk full')
+    await expect(storage.setItem('ledger-store', { state: {}, version: 0 })).rejects.toThrow('disk full')
     expect(useSaveStatusStore.getState().status).toBe('error')
   })
 
   it('removeItem saves an empty board rather than deleting anything', async () => {
     window.boardFS = createMockBoardFS()
     const storage = boardStorage()
-    await storage.removeItem('tasktray-store')
+    await storage.removeItem('ledger-store')
     expect(window.boardFS.saveState).toHaveBeenCalledWith({ projects: {}, columns: {}, cards: {}, tags: {}, folders: {} })
   })
 })

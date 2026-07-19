@@ -1,30 +1,37 @@
 // electron/store.cjs's real default DATA_DIR is a per-user location under
-// the current machine's home directory, and LEGACY_DATA_DIR points at one
-// specific machine's real, irreplaceable task data (see CLAUDE.md). To make
-// this module safely testable, both are overridable via env vars (test-only
-// — never set in production) so these tests run against disposable temp
-// directories on the real filesystem instead of mocking fs, and instead of
-// ever touching a real location.
+// the current machine's home directory, and PREVIOUS_APP_DATA_DIR /
+// LEGACY_DATA_DIR point at real, irreplaceable task data (see CLAUDE.md) —
+// the former the old TaskTray-named data folder, the latter one specific
+// machine's original hardcoded pre-portable path. To make this module safely
+// testable, all three are overridable via env vars (test-only — never set in
+// production) so these tests run against disposable temp directories on the
+// real filesystem instead of mocking fs, and instead of ever touching a real
+// location.
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
-const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasktray-store-test-'))
-const tmpLegacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'tasktray-legacy-test-'))
-process.env.TASKTRAY_DATA_DIR = tmpDataDir
-process.env.TASKTRAY_LEGACY_DATA_DIR = tmpLegacyDir
+const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-test-'))
+const tmpPreviousAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-previous-app-test-'))
+const tmpLegacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-legacy-test-'))
+process.env.LEDGER_DATA_DIR = tmpDataDir
+process.env.LEDGER_PREVIOUS_APP_DATA_DIR = tmpPreviousAppDir
+process.env.LEDGER_LEGACY_DATA_DIR = tmpLegacyDir
 
 const { DATA_DIR, saveState, loadState, putAttachment, getAttachment, deleteAttachment } = await import(
   '../../electron/store.cjs'
 )
 
-// Guardrail: if either of these ever points anywhere near a real data
-// folder, every test in this file must refuse to run rather than risk
-// touching real user data.
+// Guardrail: if any of these ever points anywhere near a real data folder,
+// every test in this file must refuse to run rather than risk touching real
+// user data.
 beforeAll(() => {
   if (!DATA_DIR.startsWith(os.tmpdir())) {
     throw new Error(`Refusing to run: DATA_DIR (${DATA_DIR}) is not a temp directory.`)
+  }
+  if (!tmpPreviousAppDir.startsWith(os.tmpdir())) {
+    throw new Error(`Refusing to run: previous-app dir override (${tmpPreviousAppDir}) is not a temp directory.`)
   }
   if (!tmpLegacyDir.startsWith(os.tmpdir())) {
     throw new Error(`Refusing to run: legacy dir override (${tmpLegacyDir}) is not a temp directory.`)
@@ -36,6 +43,11 @@ function resetDataDir() {
   fs.mkdirSync(DATA_DIR, { recursive: true })
 }
 
+function resetPreviousAppDir() {
+  fs.rmSync(tmpPreviousAppDir, { recursive: true, force: true })
+  fs.mkdirSync(tmpPreviousAppDir, { recursive: true })
+}
+
 function resetLegacyDir() {
   fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
   fs.mkdirSync(tmpLegacyDir, { recursive: true })
@@ -45,17 +57,23 @@ function writeCsv(file: string, contents: string) {
   fs.writeFileSync(path.join(DATA_DIR, file), contents, 'utf8')
 }
 
+function writePreviousAppCsv(file: string, contents: string) {
+  fs.writeFileSync(path.join(tmpPreviousAppDir, file), contents, 'utf8')
+}
+
 function writeLegacyCsv(file: string, contents: string) {
   fs.writeFileSync(path.join(tmpLegacyDir, file), contents, 'utf8')
 }
 
 beforeEach(() => {
   resetDataDir()
+  resetPreviousAppDir()
   resetLegacyDir()
 })
 
 afterAll(() => {
   fs.rmSync(tmpDataDir, { recursive: true, force: true })
+  fs.rmSync(tmpPreviousAppDir, { recursive: true, force: true })
   fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
 })
 
@@ -219,6 +237,49 @@ describe('loadState', () => {
     // Migration is persisted immediately so the on-disk schema doesn't linger stale.
     const reloaded = loadState()!
     expect(reloaded.folders.f1.taskIds).toEqual(['card1'])
+  })
+})
+
+describe('migrateFromLegacyLocation (previous app name, TaskTray)', () => {
+  it('copies CSVs and attachments from the previous-app dir when the portable dir is empty', () => {
+    writePreviousAppCsv('tags.csv', 'id,name,color\r\nt1,urgent,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writePreviousAppCsv(file, '')
+    }
+    fs.mkdirSync(path.join(tmpPreviousAppDir, 'attachments'), { recursive: true })
+    fs.writeFileSync(path.join(tmpPreviousAppDir, 'attachments', 'att1__notes.txt'), 'hello')
+
+    const loaded = loadState()!
+
+    expect(Object.keys(loaded.tags)).toEqual(['t1'])
+    expect(fs.readFileSync(path.join(DATA_DIR, 'attachments', 'att1__notes.txt'), 'utf8')).toBe('hello')
+  })
+
+  it('copies, never moves — the previous-app dir is left untouched after migrating', () => {
+    writePreviousAppCsv('tags.csv', 'id,name,color\r\nt1,urgent,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writePreviousAppCsv(file, '')
+    }
+
+    loadState()
+
+    expect(fs.existsSync(path.join(tmpPreviousAppDir, 'tags.csv'))).toBe(true)
+    expect(fs.readFileSync(path.join(tmpPreviousAppDir, 'tags.csv'), 'utf8')).toContain('urgent')
+  })
+
+  it('takes priority over the older hardcoded legacy dir when both have data', () => {
+    writePreviousAppCsv('tags.csv', 'id,name,color\r\nnew1,from-tasktray,blue\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writePreviousAppCsv(file, '')
+    }
+    writeLegacyCsv('tags.csv', 'id,name,color\r\nold1,should-not-appear,red\r\n')
+    for (const file of ['projects.csv', 'columns.csv', 'cards.csv', 'folders.csv']) {
+      writeLegacyCsv(file, '')
+    }
+
+    const loaded = loadState()!
+
+    expect(Object.keys(loaded.tags)).toEqual(['new1'])
   })
 })
 

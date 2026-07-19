@@ -1,5 +1,5 @@
 #!/bin/sh
-# Builds TaskTray.app and installs it to /Applications.
+# Builds Ledger.app and installs it to /Applications.
 #
 # The signing dance below matters: this repo lives in an iCloud-synced
 # folder, and File Provider stamps SIP-protected extended attributes
@@ -14,13 +14,13 @@ cd "$(dirname "$0")/.."
 npm run app:build
 
 STAGE_DIR="$(mktemp -d)"
-STAGE="$STAGE_DIR/TaskTray.app"
-ditto --norsrc --noextattr --noqtn "release/mac-arm64/TaskTray.app" "$STAGE"
+STAGE="$STAGE_DIR/Ledger.app"
+ditto --norsrc --noextattr --noqtn "release/mac-arm64/Ledger.app" "$STAGE"
 codesign --force --deep --sign - "$STAGE"
 codesign --verify --deep --strict "$STAGE"
 
-rm -rf "/Applications/TaskTray.app"
-ditto "$STAGE" "/Applications/TaskTray.app"
+rm -rf "/Applications/Ledger.app"
+ditto "$STAGE" "/Applications/Ledger.app"
 rm -rf "$STAGE_DIR"
 
-echo "Installed: /Applications/TaskTray.app"
+echo "Installed: /Applications/Ledger.app"

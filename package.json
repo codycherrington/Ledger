@@ -1,7 +1,7 @@
 {
-  "name": "tasktray",
+  "name": "ledger",
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A local-only Kanban project/task manager for the Mac desktop.",
   "author": "Cody Cherrington",
   "type": "module",
@@ -18,8 +18,8 @@
     "test:coverage": "vitest run --coverage"
   },
   "build": {
-    "appId": "com.codycherrington.tasktray",
-    "productName": "TaskTray",
+    "appId": "com.codycherrington.ledger",
+    "productName": "Ledger",
     "directories": {
       "output": "release"
     },
