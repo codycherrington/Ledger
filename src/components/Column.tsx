@@ -21,13 +21,13 @@ interface ColumnProps {
 
 export default function Column({ column, items, onOpenCard, headerAction }: ColumnProps) {
   const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' } })
-  const isNullspace = column.name === 'NULLSPACE'
+  const isStash = column.name === 'Stash'
   const colorClasses = COLOR_CLASSES[column.color as keyof typeof COLOR_CLASSES] ?? COLOR_CLASSES.slate
 
   return (
     <div
       className={
-        isNullspace
+        isStash
           ? 'flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-dashed border-white/15 bg-white/[0.015]'
           : 'flex max-h-full w-[300px] shrink-0 flex-col rounded-2xl border border-white/[0.05] bg-white/[0.025]'
       }
@@ -35,7 +35,7 @@ export default function Column({ column, items, onOpenCard, headerAction }: Colu
       <div className="flex items-center justify-between rounded-t-2xl px-3.5 py-3">
         <div className="flex min-w-0 items-center gap-2">
           <span className={`h-2 w-2 shrink-0 rounded-full ${colorClasses.dot}`} />
-          <span className={`truncate text-sm font-semibold ${isNullspace ? 'text-slate-500' : 'text-slate-200'}`}>
+          <span className={`truncate text-sm font-semibold ${isStash ? 'text-slate-500' : 'text-slate-200'}`}>
             {column.name}
           </span>
           <span className="rounded-full bg-white/[0.06] px-1.5 py-px text-[11px] font-medium text-slate-500">

@@ -6,6 +6,20 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Ledger (formerly TaskTray) is a local-only, Mac-only Electron Kanban/task manager. No account, no server, no browser mode — it only runs inside its own Electron shell because persistence goes through `window.boardFS` (exposed via `electron/preload.cjs`), which isn't available in a plain browser tab.
 
+## Setting up a fresh clone
+
+On a machine that has never had this repo before:
+
+1. **Prerequisites:** macOS (Apple Silicon or Intel) and [Node.js](https://nodejs.org/) 20+. There's nothing else to install globally, no accounts, no API keys, and no env vars to set — `npm install` is the entire setup.
+2. `npm install` — pulls all dependencies, including `electron` (downloads a prebuilt binary; no native toolchain needed).
+3. Sanity-check the install before touching anything: `npm test` and `npm run build` should both pass with zero configuration on a totally fresh clone. If either fails, something's wrong with the environment (Node version, a broken install), not with the checkout.
+4. From there, pick one:
+   - `npm run dev` — the actual development loop (hot reload, real CSV data under `~/Library/Application Support/ledger/`). This is the only supported way to develop; there's no browser fallback (see "What this is" above).
+   - `npm run app:install` — builds and installs a real `/Applications/Ledger.app` for day-to-day use rather than development.
+5. Optional, only relevant if you'll be using the "Start with Claude" task-launch feature (see the Claude Code integration section below): the `claude` CLI needs to be installed and on your shell `PATH` separately from this repo — Ledger just shells out to it.
+
+The [`README.md`](./README.md) covers the same ground for a human reader; this section exists so an agent opening this repo cold doesn't have to go hunting for it.
+
 ## Commands
 
 ```bash
@@ -43,7 +57,7 @@ One CSV per table: `projects.csv`, `columns.csv`, `cards.csv`, `tags.csv`, `fold
 
 **Domain model** (`src/types.ts`): everything placeable on a board is a `BoardItem` — a `{ kind: 'project' | 'folder' | 'task', ... }` discriminated union wrapping a `Project`, `Folder`, or `Card`. A `Column` belongs to either the Home singleton or a `Project` (`ColumnOwnerType = 'home' | 'project'`) — **folders do not own columns**. A `Folder` is a flat, ordered `taskIds` list, not its own board; it sits as a card inside its owner's board (Home or a project) via its own `columnId`. Folders carry the same descriptive attributes as a `Card` — `priority`, `dueDate`, `tagIds`, `links`, `attachments` — everything except a checklist, which was removed from the app entirely (see `src/store/board.ts`'s `toggleFolderTag`/`addFolderLink`/`addFolderAttachment` etc., mirroring the Card equivalents). A `Card` can belong to a project (`projectId`, optional — undefined for standalone/Home-level tasks) and/or be filed inside a folder (`folderId`, optional); a card's `columnId` is always its status, but while `folderId` is set that status is display-only (shown as a colored pill on the card) since the card isn't in any column's `cardOrder` — it's in the folder's `taskIds` instead. `Tag` is a single global pool (not scoped to a project).
 
-**Columns are fixed, not user-defined.** `FIXED_COLUMNS` in `src/store/board.ts` hardcodes exactly four phases: `To Do`, `In Progress`, `Done`, `NULLSPACE`. Every board owner (Home, each project) always has all four. `ensureFixedPhases` (run in `onRehydrateStorage`) backfills any missing fixed column and places any project not yet sitting in a Home column into Home's "To Do". `selectOwnerColumns` always returns columns in `FIXED_COLUMNS` order regardless of what's in a project's `columnOrder`; that array is only ever a membership list, never a render order.
+**Columns are fixed, not user-defined.** `FIXED_COLUMNS` in `src/store/board.ts` hardcodes exactly four phases: `To Do`, `In Progress`, `Done`, `Stash`. Every board owner (Home, each project) always has all four. `ensureFixedPhases` (run in `onRehydrateStorage`) renames any column still carrying the old `NULLSPACE` name (pre-rename data) to `Stash`, backfills any missing fixed column, and places any project not yet sitting in a Home column into Home's "To Do". `selectOwnerColumns` always returns columns in `FIXED_COLUMNS` order regardless of what's in a project's `columnOrder`; that array is only ever a membership list, never a render order.
 
 **Routing** (`src/App.tsx`): three routes — `/` (`Home.tsx`), `/project/:projectId` (`Board.tsx`), and `/folder/:folderId` (`FolderBoard.tsx`). `Home.tsx`/`Board.tsx` are thin wrappers around `src/components/BoardShell.tsx`, the shared board/table UI (parameterized by `ownerType`/`ownerId`). `FolderBoard.tsx` wraps `src/components/FolderBoardShell.tsx` instead — a sibling to `BoardShell.tsx`, scoped to one folder's `taskIds` rather than a real column-owning board, with its own `DndContext` (folders don't own columns, so it groups the folder's tasks by each card's `columnId` instead of a column's `cardOrder`). Folders can still also expand inline in place on whichever board they sit in (see `FolderCard.tsx`: the arrow toggles the inline expand — its tasks ordered by status then priority via `sortFolderTasksForDisplay` — and the folder name opens the folder's own page, always in whichever board/table mode `src/store/viewMode.ts` currently holds, same as any other navigation, never forcing a specific view) — both remain valid ways to view a folder's tasks.
 

@@ -4,12 +4,12 @@ A local-only Kanban and task manager for the Mac desktop. No account, no server,
 
 ## Features
 
-- **Home board** — a top-level Kanban/table board where Projects, Folders, and standalone Tasks all sit as cards you can drag between statuses (To Do / In Progress / Done / Nullspace).
+- **Home board** — a top-level Kanban/table board where Projects, Folders, and standalone Tasks all sit as cards you can drag between statuses (To Do / In Progress / Done / Stash).
 - **Projects** — each gets its own board with the same four fixed statuses, plus a details view for a description, links, and file attachments.
 - **Folders** — group related tasks (e.g. a project phase) without giving up per-task status. A folder expands in place (in both Kanban and Table view) via its arrow, sorted by status then priority; clicking its name opens the folder's own page. A task filed in a folder shows its status as a small colored pill. Folders carry the same tags, priority, due date, links, and attachments a task does.
-- **Table view** — toggle any board to a sortable, filterable spreadsheet-style list (title, category, priority, due date, status), with inline editing.
+- **Table view** — toggle any board to a sortable, filterable spreadsheet-style list (type, title, tags, priority, due date, status), with inline editing.
 - **Tags, priority, due dates, links, attachments** — tags are a single global pool usable on any task or folder, project-scoped or not.
-- **Filter popover** — search plus priority/tag filters tucked behind one "Filter" button instead of a permanent row.
+- **Filter popover** — search plus multi-select Status, Priority, Due date, and Tag filters tucked behind one "Filter" button instead of a permanent row.
 - **Save status light** — a persistent dot in the header glows green when everything's saved, amber while saving, and red on failure; hover the red light for the actual error and a button to copy it.
 - **Claude Code integration** — enable "Claude Code project" on a project (in its details dialog) and point it at a local repo folder. Any task in that project gets a "Start with Claude" button that opens a Terminal window, `cd`s into the repo, and launches `claude` with the task's title and summary as the prompt — resuming your last Claude Code conversation there if one exists, or starting fresh otherwise. In Table view, select multiple tasks to launch Claude with all of them combined into one prompt.
 
@@ -27,6 +27,10 @@ git clone https://github.com/codycherrington/Ledger.git
 cd Ledger
 npm install
 ```
+
+Nothing else to install — no global tooling, no accounts, no API keys, no env
+vars. Optionally sanity-check the install with `npm test && npm run build`;
+both should pass cleanly on a fresh clone with zero configuration.
 
 From here you have two paths:
 

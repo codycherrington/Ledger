@@ -55,5 +55,5 @@ export const STATUS_COLOR: Record<string, ColorName> = {
   'To Do': 'red',
   'In Progress': 'amber',
   Done: 'emerald',
-  NULLSPACE: 'slate',
+  Stash: 'slate',
 }

@@ -44,6 +44,6 @@ describe('PRIORITY_COLOR', () => {
 
 describe('STATUS_COLOR', () => {
   it('covers all four fixed board columns', () => {
-    expect(Object.keys(STATUS_COLOR).sort()).toEqual(['Done', 'In Progress', 'NULLSPACE', 'To Do'].sort())
+    expect(Object.keys(STATUS_COLOR).sort()).toEqual(['Done', 'In Progress', 'Stash', 'To Do'].sort())
   })
 })
