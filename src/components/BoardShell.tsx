@@ -27,6 +27,7 @@ import SaveStatusLight from './SaveStatusLight'
 import GlobalAddButton from './GlobalAddButton'
 import OpenClaudeCodeButton from './OpenClaudeCodeButton'
 import { useViewModeStore } from '../store/viewMode'
+import { ownerBoardKey, useDoneCollapseStore } from '../store/doneCollapse'
 import { BackIcon, ChevronIcon } from './icons'
 import type { BoardItem, Card as CardType, ColumnOwnerType, Priority } from '../types'
 
@@ -87,7 +88,9 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [doneCollapsed, setDoneCollapsed] = useState(false)
+  const boardKey = ownerBoardKey(ownerType, ownerId)
+  const doneCollapsed = useDoneCollapseStore((s) => s.collapsed[boardKey] ?? false)
+  const toggleDoneCollapsed = useDoneCollapseStore((s) => s.toggle)
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -321,7 +324,7 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
                 headerAction = (
                   <button
                     type="button"
-                    onClick={() => setDoneCollapsed((v) => !v)}
+                    onClick={() => toggleDoneCollapsed(boardKey)}
                     aria-label={doneCollapsed ? 'Expand Done column' : 'Collapse Done column'}
                     title={doneCollapsed ? 'Expand column' : 'Collapse column'}
                     className="icon-btn shrink-0"
