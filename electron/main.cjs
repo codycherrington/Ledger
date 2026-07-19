@@ -1,6 +1,6 @@
 'use strict'
 
-const { app, BrowserWindow, ipcMain, shell, Menu } = require('electron')
+const { app, BrowserWindow, ipcMain, shell, Menu, dialog } = require('electron')
 const path = require('node:path')
 const store = require('./store.cjs')
 
@@ -67,6 +67,11 @@ ipcMain.handle('board:save', (_event, state) => store.saveState(state))
 ipcMain.handle('attachment:put', (_event, id, name, data) => store.putAttachment(id, name, data))
 ipcMain.handle('attachment:get', (_event, id) => store.getAttachment(id))
 ipcMain.handle('attachment:delete', (_event, id) => store.deleteAttachment(id))
+ipcMain.handle('dialog:pickFolder', async () => {
+  const result = await dialog.showOpenDialog({ properties: ['openDirectory'] })
+  return result.canceled ? null : result.filePaths[0]
+})
+ipcMain.handle('claudeCode:launch', (_event, repoPath, prompt) => store.launchClaudeCode(repoPath, prompt))
 
 app.whenReady().then(() => {
   buildMenu()

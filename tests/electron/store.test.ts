@@ -15,13 +15,27 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 const tmpDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-store-test-'))
 const tmpPreviousAppDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-previous-app-test-'))
 const tmpLegacyDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-legacy-test-'))
+const tmpClaudeProjectsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ledger-claude-projects-test-'))
 process.env.LEDGER_DATA_DIR = tmpDataDir
 process.env.LEDGER_PREVIOUS_APP_DATA_DIR = tmpPreviousAppDir
 process.env.LEDGER_LEGACY_DATA_DIR = tmpLegacyDir
+process.env.LEDGER_CLAUDE_PROJECTS_DIR = tmpClaudeProjectsDir
+// launchClaudeCode's real implementation shells out to `open` to launch
+// Terminal.app and run the `claude` CLI — disabled so the test suite only
+// ever inspects the generated script/prompt files, never actually opens a
+// window or runs a real command.
+process.env.LEDGER_DISABLE_CLAUDE_LAUNCH = '1'
 
-const { DATA_DIR, saveState, loadState, putAttachment, getAttachment, deleteAttachment } = await import(
-  '../../electron/store.cjs'
-)
+const {
+  DATA_DIR,
+  saveState,
+  loadState,
+  putAttachment,
+  getAttachment,
+  deleteAttachment,
+  hasExistingSession,
+  launchClaudeCode,
+} = await import('../../electron/store.cjs')
 
 // Guardrail: if any of these ever points anywhere near a real data folder,
 // every test in this file must refuse to run rather than risk touching real
@@ -35,6 +49,9 @@ beforeAll(() => {
   }
   if (!tmpLegacyDir.startsWith(os.tmpdir())) {
     throw new Error(`Refusing to run: legacy dir override (${tmpLegacyDir}) is not a temp directory.`)
+  }
+  if (!tmpClaudeProjectsDir.startsWith(os.tmpdir())) {
+    throw new Error(`Refusing to run: Claude projects dir override (${tmpClaudeProjectsDir}) is not a temp directory.`)
   }
 })
 
@@ -53,6 +70,11 @@ function resetLegacyDir() {
   fs.mkdirSync(tmpLegacyDir, { recursive: true })
 }
 
+function resetClaudeProjectsDir() {
+  fs.rmSync(tmpClaudeProjectsDir, { recursive: true, force: true })
+  fs.mkdirSync(tmpClaudeProjectsDir, { recursive: true })
+}
+
 function writeCsv(file: string, contents: string) {
   fs.writeFileSync(path.join(DATA_DIR, file), contents, 'utf8')
 }
@@ -69,12 +91,22 @@ beforeEach(() => {
   resetDataDir()
   resetPreviousAppDir()
   resetLegacyDir()
+  resetClaudeProjectsDir()
 })
 
 afterAll(() => {
   fs.rmSync(tmpDataDir, { recursive: true, force: true })
   fs.rmSync(tmpPreviousAppDir, { recursive: true, force: true })
   fs.rmSync(tmpLegacyDir, { recursive: true, force: true })
+  fs.rmSync(tmpClaudeProjectsDir, { recursive: true, force: true })
+  // launchClaudeCode always writes its script/prompt files under the real
+  // os.tmpdir() (that part isn't overridable, unlike DATA_DIR) — sweep up
+  // this run's leftovers so the suite doesn't litter the system temp dir.
+  for (const f of fs.readdirSync(os.tmpdir())) {
+    if (f.startsWith('ledger-claude-launch-') || f.startsWith('ledger-claude-prompt-')) {
+      fs.rmSync(path.join(os.tmpdir(), f), { force: true })
+    }
+  }
 })
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -100,6 +132,8 @@ describe('loadState', () => {
           updatedAt: 2000,
           columnOrder: ['c1', 'c2'],
           columnId: 'home1',
+          claudeCodeEnabled: true,
+          repoPath: '/Users/test/repo',
         },
       },
       columns: {
@@ -178,6 +212,20 @@ describe('loadState', () => {
     const loaded = loadState()!
     expect(loaded.projects.p1.columnId).toBe('')
     expect(loaded.projects.p1.columnOrder).toEqual(['c1', 'c2'])
+  })
+
+  it('defaults a legacy project row with no claudeCodeEnabled/repoPath columns to disabled/unset', () => {
+    writeCsv(
+      'projects.csv',
+      'id,name,description,links,attachments,createdAt,updatedAt,columnOrder,columnId\r\n' +
+        'p1,Legacy Project,,[],[],1000,1000,c1;c2,col1\r\n',
+    )
+    for (const file of ['columns.csv', 'cards.csv', 'tags.csv', 'folders.csv']) {
+      writeCsv(file, '')
+    }
+    const loaded = loadState()!
+    expect(loaded.projects.p1.claudeCodeEnabled).toBe(false)
+    expect(loaded.projects.p1.repoPath).toBeUndefined()
   })
 
   it('falls back to an empty array when a JSON-encoded cell is malformed', () => {
@@ -389,5 +437,75 @@ describe('attachments', () => {
 
   it('deleteAttachment on a missing id is a no-op rather than throwing', () => {
     expect(() => deleteAttachment('never-existed')).not.toThrow()
+  })
+})
+
+describe('hasExistingSession', () => {
+  it('returns false when no session directory exists for the repo path', () => {
+    expect(hasExistingSession('/some/repo')).toBe(false)
+  })
+
+  it('returns true when the encoded session directory has at least one .jsonl file', () => {
+    const encoded = '/some/repo'.replace(/\//g, '-')
+    fs.mkdirSync(path.join(tmpClaudeProjectsDir, encoded), { recursive: true })
+    fs.writeFileSync(path.join(tmpClaudeProjectsDir, encoded, 'session.jsonl'), '{}')
+    expect(hasExistingSession('/some/repo')).toBe(true)
+  })
+
+  it('returns false when the session directory exists but has no .jsonl files', () => {
+    const encoded = '/some/repo'.replace(/\//g, '-')
+    fs.mkdirSync(path.join(tmpClaudeProjectsDir, encoded), { recursive: true })
+    expect(hasExistingSession('/some/repo')).toBe(false)
+  })
+})
+
+describe('launchClaudeCode', () => {
+  function scriptContent(repoPath: string, prompt: string): string {
+    const { scriptFile } = launchClaudeCode(repoPath, prompt)
+    return fs.readFileSync(scriptFile, 'utf8')
+  }
+
+  it('writes an executable .command script and a separate prompt file', () => {
+    const { scriptFile, promptFile } = launchClaudeCode('/some/repo', 'do the thing')
+    expect(fs.existsSync(scriptFile)).toBe(true)
+    expect(fs.existsSync(promptFile)).toBe(true)
+    expect(fs.statSync(scriptFile).mode & 0o111).not.toBe(0)
+    expect(fs.readFileSync(promptFile, 'utf8')).toBe('do the thing')
+  })
+
+  it('cds into the repo path and reads the prompt back via a quoted command substitution', () => {
+    const script = scriptContent('/some/repo', 'do the thing')
+    expect(script).toContain("cd '/some/repo'")
+    expect(script).toMatch(/claude\s+"\$\(cat '.*'\)"/)
+  })
+
+  it('omits --continue when no session exists yet', () => {
+    const script = scriptContent('/some/repo', 'do the thing')
+    expect(script).not.toContain('--continue')
+  })
+
+  it('passes --continue when a session already exists for the repo path', () => {
+    const encoded = '/some/repo'.replace(/\//g, '-')
+    fs.mkdirSync(path.join(tmpClaudeProjectsDir, encoded), { recursive: true })
+    fs.writeFileSync(path.join(tmpClaudeProjectsDir, encoded, 'session.jsonl'), '{}')
+    const script = scriptContent('/some/repo', 'do the thing')
+    expect(script).toContain('claude --continue "$(cat')
+  })
+
+  it('writes the prompt to its own file rather than interpolating it into the script', () => {
+    // A prompt containing shell metacharacters must never appear literally in
+    // the script's own source — only via the `cat` of its dedicated temp file
+    // inside a double-quoted command substitution. This is the regression
+    // test for the shell-injection risk this feature was designed against.
+    const tricky = 'quote " backtick ` dollar $(whoami) newline\nend'
+    const { scriptFile, promptFile } = launchClaudeCode('/some/repo', tricky)
+    const script = fs.readFileSync(scriptFile, 'utf8')
+    expect(script).not.toContain(tricky)
+    expect(fs.readFileSync(promptFile, 'utf8')).toBe(tricky)
+  })
+
+  it('single-quotes a repo path that itself contains a single quote', () => {
+    const script = scriptContent("/some/repo's folder", 'x')
+    expect(script).toContain(`cd '/some/repo'\\''s folder'`)
   })
 })

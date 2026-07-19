@@ -12,6 +12,7 @@ import {
   type DragStartEvent,
 } from '@dnd-kit/core'
 import { reorderFolderTaskIdsWithinColumn, selectOwnerColumns, useBoardStore } from '../store/board'
+import { buildTaskPrompt } from '../lib/claudeCode'
 import Column from './Column'
 import { CardBody } from './Card'
 import CardDetailDialog from './CardDetailDialog'
@@ -36,8 +37,10 @@ interface FolderBoardShellProps {
 export default function FolderBoardShell({ folder, onBack }: FolderBoardShellProps) {
   const columns = useBoardStore(useShallow((s) => selectOwnerColumns(s, folder.ownerType, folder.ownerId)))
   const cards = useBoardStore((s) => s.cards)
+  const projects = useBoardStore((s) => s.projects)
   const reorderFolderTasks = useBoardStore((s) => s.reorderFolderTasks)
   const setCardStatus = useBoardStore((s) => s.setCardStatus)
+  const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
   const [openCardId, setOpenCardId] = useState<string | null>(null)
   const [activeCard, setActiveCard] = useState<Card | null>(null)
@@ -102,6 +105,9 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
   const allTasks = folder.taskIds.map((id) => cards[id]).filter((c): c is Card => Boolean(c))
 
+  const project = folder.ownerType === 'project' && folder.ownerId ? projects[folder.ownerId] : undefined
+  const claudeCodeReady = Boolean(project?.claudeCodeEnabled && project.repoPath)
+
   return (
     <div className="flex h-screen flex-col">
       <header className="app-drag flex h-12 shrink-0 items-center justify-between border-b border-white/[0.06] pr-4 pl-[88px]">
@@ -127,13 +133,18 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
       />
 
       {view === 'table' ? (
-        <TableView
-          items={allTasks.filter(matchesFilters).map((card): BoardItem => ({ kind: 'task', card }))}
-          columns={columns}
-          showTypeColumn={false}
-          onOpenCard={setOpenCardId}
-          onMoveItem={(itemId, columnId) => setCardStatus(itemId, columnId)}
-        />
+        <>
+          <div className="flex justify-start px-5 pt-4">
+            <GlobalAddButton folderId={folder.id} ownerType={folder.ownerType} ownerId={folder.ownerId} columns={columns} variant="labeled" />
+          </div>
+          <TableView
+            items={allTasks.filter(matchesFilters).map((card): BoardItem => ({ kind: 'task', card }))}
+            columns={columns}
+            showTypeColumn={false}
+            onOpenCard={setOpenCardId}
+            onMoveItem={(itemId, columnId) => setCardStatus(itemId, columnId)}
+          />
+        </>
       ) : (
         <DndContext
           sensors={sensors}
@@ -143,16 +154,36 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
           onDragEnd={handleDragEnd}
         >
           <div className="flex flex-1 items-start gap-4 overflow-x-auto p-5">
-            {activeColumns.map((column) => (
-              <Column
-                key={column.id}
-                column={column}
-                items={tasksForColumn(column.id)
-                  .filter(matchesFilters)
-                  .map((card): BoardItem => ({ kind: 'task', card }))}
-                onOpenCard={setOpenCardId}
-              />
-            ))}
+            {activeColumns.map((column) => {
+              const taskCards = tasksForColumn(column.id).filter(matchesFilters)
+              let headerAction = null
+              if (column.name === 'To Do') {
+                headerAction = (
+                  <GlobalAddButton folderId={folder.id} ownerType={folder.ownerType} ownerId={folder.ownerId} columns={columns} variant="compact" />
+                )
+              } else if (column.name === 'In Progress' && claudeCodeReady) {
+                headerAction = (
+                  <button
+                    type="button"
+                    onClick={() => project?.repoPath && taskCards.length > 0 && startClaudeCode(project.repoPath, buildTaskPrompt(taskCards))}
+                    disabled={taskCards.length === 0}
+                    title="Launch all tasks in this column in Claude Code"
+                    className="shrink-0 rounded-md bg-indigo-500 px-2 py-1 text-[11px] font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-slate-500 disabled:hover:bg-white/[0.06]"
+                  >
+                    Launch all
+                  </button>
+                )
+              }
+              return (
+                <Column
+                  key={column.id}
+                  column={column}
+                  items={taskCards.map((card): BoardItem => ({ kind: 'task', card }))}
+                  onOpenCard={setOpenCardId}
+                  headerAction={headerAction}
+                />
+              )
+            })}
             {nullspaceColumn && (
               <>
                 <div className="mx-1 w-px shrink-0 self-stretch bg-white/10" aria-hidden="true" />
@@ -178,7 +209,6 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
       )}
 
       {openCardId && <CardDetailDialog cardId={openCardId} onClose={() => setOpenCardId(null)} />}
-      <GlobalAddButton folderId={folder.id} ownerType={folder.ownerType} ownerId={folder.ownerId} columns={columns} />
     </div>
   )
 }

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { BoardItem, Column as ColumnType } from '../types'
@@ -11,9 +12,14 @@ interface ColumnProps {
   column: ColumnType
   items: BoardItem[]
   onOpenCard: (cardId: string) => void
+  // Arbitrary control rendered top-right of the column header, next to the
+  // count badge — e.g. the add-item button on "To Do" or the Claude Code
+  // launch-all button on "In Progress". Callers decide which column (if any)
+  // gets one; Column itself stays agnostic to what the action does.
+  headerAction?: ReactNode
 }
 
-export default function Column({ column, items, onOpenCard }: ColumnProps) {
+export default function Column({ column, items, onOpenCard, headerAction }: ColumnProps) {
   const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' } })
   const isNullspace = column.name === 'NULLSPACE'
   const colorClasses = COLOR_CLASSES[column.color as keyof typeof COLOR_CLASSES] ?? COLOR_CLASSES.slate
@@ -36,6 +42,7 @@ export default function Column({ column, items, onOpenCard }: ColumnProps) {
             {items.length}
           </span>
         </div>
+        {headerAction}
       </div>
 
       <div ref={setDroppableRef} className="min-h-2 flex-1 space-y-2 overflow-y-auto px-2.5 pb-2.5">

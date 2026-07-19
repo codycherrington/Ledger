@@ -60,6 +60,8 @@ export interface Project {
   updatedAt: number
   columnOrder: string[] // this project's own board's 4 column ids
   columnId: string // which Home-board column this project currently sits in
+  claudeCodeEnabled?: boolean // gates the "Start with Claude" launch UI on this project's tasks
+  repoPath?: string // absolute filesystem path Claude Code is launched inside
 }
 
 export interface Folder {

@@ -11,6 +11,7 @@ A local-only Kanban and task manager for the Mac desktop. No account, no server,
 - **Tags, priority, due dates, links, attachments** — tags are a single global pool usable on any task or folder, project-scoped or not.
 - **Filter popover** — search plus priority/tag filters tucked behind one "Filter" button instead of a permanent row.
 - **Save status light** — a persistent dot in the header glows green when everything's saved, amber while saving, and red on failure; hover the red light for the actual error and a button to copy it.
+- **Claude Code integration** — enable "Claude Code project" on a project (in its details dialog) and point it at a local repo folder. Any task in that project gets a "Start with Claude" button that opens a Terminal window, `cd`s into the repo, and launches `claude` with the task's title and summary as the prompt — resuming your last Claude Code conversation there if one exists, or starting fresh otherwise. In Table view, select multiple tasks to launch Claude with all of them combined into one prompt.
 
 Everything is stored as CSVs under `~/Library/Application Support/ledger/` (see [Data storage](#data-storage) below). In the app, **File → Open Data Folder** (⌘⇧O) jumps straight there.
 

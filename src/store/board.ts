@@ -23,7 +23,7 @@ import type {
 } from '../types'
 import { makeId } from '../lib/ids'
 import { nextColor } from '../lib/colors'
-import { boardStorage } from './persist'
+import { boardStorage, requireFS } from './persist'
 import { deleteAttachmentBlob, putAttachmentBlob } from './attachments'
 
 interface BoardState {
@@ -34,8 +34,14 @@ interface BoardState {
   folders: Record<string, Folder>
 
   createProject: (name: string, description: string | undefined, homeColumnId: string) => string
-  updateProject: (id: string, patch: Partial<Pick<Project, 'name' | 'description'>>) => void
+  updateProject: (
+    id: string,
+    patch: Partial<Pick<Project, 'name' | 'description' | 'claudeCodeEnabled' | 'repoPath'>>,
+  ) => void
   deleteProject: (id: string) => void
+
+  pickRepoFolder: () => Promise<string | null>
+  startClaudeCode: (repoPath: string, prompt: string) => Promise<void>
 
   addProjectLink: (projectId: string, label: string, url: string) => void
   updateProjectLink: (projectId: string, linkId: string, patch: Partial<Pick<ResourceLink, 'label' | 'url'>>) => void
@@ -237,6 +243,12 @@ export const useBoardStore = create<BoardState>()(
             projects: { ...state.projects, [id]: { ...project, ...patch, updatedAt: Date.now() } },
           }
         })
+      },
+
+      pickRepoFolder: async () => requireFS().pickFolder(),
+
+      startClaudeCode: async (repoPath, prompt) => {
+        await requireFS().launchClaudeCode(repoPath, prompt)
       },
 
       deleteProject: (id) => {
