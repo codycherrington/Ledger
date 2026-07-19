@@ -73,6 +73,27 @@ loop; there's no browser fallback to spot-check in.
 - The dev server and any built/installed copy of the app share this same folder, so running both at once can race on saves — stick to one at a time.
 - If you're upgrading a checkout that predates the rename from TaskTray to Ledger, or one that predates the portable data location entirely, your existing board is migrated automatically the first time the app loads: the old folder (`~/Library/Application Support/tasktray/`, or for very old checkouts the `data/` folder inside the repo) is copied (not moved) into the new location, then left in place as a backup.
 
+## Claude Code skill
+
+`claude-skill/ledger-tasks/` is a template [Claude Code](https://claude.com/claude-code) skill
+that lets a Claude session read and write your real Ledger data by talking to it in plain
+language ("add a task to my website project", "what's on my board", "mark that done") — no need
+to open the app. It works through `scripts/ledger-cli.cjs`, a plain-Node CLI that reuses Ledger's
+own CSV read/write code, so anything it writes is exactly what the app itself would have written.
+
+It's a template, not active by default — install your own copy and point it at your clone:
+
+```bash
+cp -r claude-skill/ledger-tasks ~/.claude/skills/ledger-tasks
+sed -i '' "s|<PATH_TO_LEDGER_REPO>|$(pwd)|g" ~/.claude/skills/ledger-tasks/SKILL.md
+```
+
+Full setup and usage details, including the CLI's command reference, are in
+[`claude-skill/ledger-tasks/SKILL.md`](./claude-skill/ledger-tasks/SKILL.md). One caveat worth
+knowing up front: Ledger only reads these CSVs once at startup, so if the app is open while the
+CLI writes, its next autosave will overwrite what the CLI just wrote — quit and reopen Ledger
+after using it (the CLI warns you about this automatically when it detects the app running).
+
 ## Architecture
 
 For a deeper tour of how the pieces fit together (data flow, the Zustand store, drag-and-drop model, folder semantics), see [`CLAUDE.md`](./CLAUDE.md) — written for whoever (human or AI) picks this codebase up next.
