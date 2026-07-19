@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import * as Popover from '@radix-ui/react-popover'
 import Menu from './Menu'
 import ProjectFormModal from './ProjectFormModal'
 import { useBoardStore } from '../store/board'
@@ -14,9 +15,12 @@ interface GlobalAddButtonProps {
   // the Task/Folder/Project menu entirely, and files the new task straight
   // into the folder instead of the owner board's "To Do" column.
   folderId?: string
+  // 'compact' sits inline in a column header (icon only); 'labeled' sits
+  // above the table in Table view (icon + "New Item" text).
+  variant?: 'compact' | 'labeled'
 }
 
-export default function GlobalAddButton({ ownerType, ownerId, columns, folderId }: GlobalAddButtonProps) {
+export default function GlobalAddButton({ ownerType, ownerId, columns, folderId, variant = 'compact' }: GlobalAddButtonProps) {
   const createCard = useBoardStore((s) => s.createCard)
   const createCardInFolder = useBoardStore((s) => s.createCardInFolder)
   const createFolder = useBoardStore((s) => s.createFolder)
@@ -44,67 +48,86 @@ export default function GlobalAddButton({ ownerType, ownerId, columns, folderId 
     setDraftKind(null)
   }
 
+  function discard() {
+    setDraft('')
+    setDraftKind(null)
+  }
+
   if (!folderId && !todoColumn) return null
 
+  const triggerClasses =
+    variant === 'labeled'
+      ? 'flex shrink-0 items-center gap-1.5 rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-2.5 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/30'
+      : 'flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-indigo-500 text-white transition hover:bg-indigo-400'
+
   return (
-    <div className="no-drag fixed bottom-5 left-5 z-40">
-      {draftKind ? (
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            submit()
-          }}
-          className="bg-panel w-64 rounded-xl border border-white/10 p-2 shadow-xl shadow-black/40"
-        >
-          <textarea
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault()
-                submit()
-              }
-              if (e.key === 'Escape') {
-                setDraftKind(null)
-                setDraft('')
-              }
-            }}
-            onBlur={submit}
-            rows={2}
-            placeholder={draftKind === 'folder' ? 'Folder name' : 'Task title'}
-            className="input resize-none"
-          />
-        </form>
-      ) : folderId ? (
+    <Popover.Root open={draftKind !== null} onOpenChange={(open) => !open && submit()}>
+      {folderId ? (
         // A folder can only directly contain tasks, so there's nothing to
         // choose — skip the menu and go straight into the title textarea.
-        <button
-          type="button"
-          aria-label="Add task"
-          onClick={() => setDraftKind('task')}
-          className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-500 text-white shadow-lg shadow-black/40 transition hover:bg-indigo-400"
-        >
-          <PlusIcon className="h-5 w-5" />
-        </button>
+        <Popover.Anchor asChild>
+          <button type="button" aria-label="Add task" onClick={() => setDraftKind('task')} className={triggerClasses}>
+            <PlusIcon className="h-3.5 w-3.5" />
+            {variant === 'labeled' && 'New Item'}
+          </button>
+        </Popover.Anchor>
       ) : (
-        <Menu
-          trigger={
-            <button
-              type="button"
-              aria-label="Add"
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-indigo-500 text-white shadow-lg shadow-black/40 transition hover:bg-indigo-400"
-            >
-              <PlusIcon className="h-5 w-5" />
-            </button>
-          }
-          items={[
-            { label: 'Task', onSelect: () => setDraftKind('task') },
-            { label: 'Folder', onSelect: () => setDraftKind('folder') },
-            ...(canAddProject ? [{ label: 'Project', onSelect: () => setProjectModalOpen(true) }] : []),
-          ]}
-        />
+        <Popover.Anchor>
+          <Menu
+            trigger={
+              <button type="button" aria-label="Add" className={triggerClasses}>
+                <PlusIcon className="h-3.5 w-3.5" />
+                {variant === 'labeled' && 'New Item'}
+              </button>
+            }
+            items={[
+              { label: 'Task', onSelect: () => setDraftKind('task') },
+              { label: 'Folder', onSelect: () => setDraftKind('folder') },
+              ...(canAddProject ? [{ label: 'Project', onSelect: () => setProjectModalOpen(true) }] : []),
+            ]}
+          />
+        </Popover.Anchor>
       )}
+
+      <Popover.Portal>
+        <Popover.Content
+          align="end"
+          sideOffset={6}
+          className="animate-pop-in bg-panel z-50 w-64 rounded-xl border border-white/10 p-2 shadow-xl shadow-black/40"
+        >
+          <form
+            onSubmit={(e) => {
+              e.preventDefault()
+              submit()
+            }}
+          >
+            <textarea
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault()
+                  submit()
+                }
+                if (e.key === 'Escape') {
+                  // Stop this from also reaching Radix's own document-level
+                  // Escape handler: that fires onOpenChange(false) -> submit()
+                  // on the *pre-clear* state (state updates from discard()
+                  // haven't flushed yet), which would re-create the item we
+                  // just meant to throw away.
+                  e.stopPropagation()
+                  discard()
+                }
+              }}
+              onBlur={submit}
+              rows={2}
+              placeholder={draftKind === 'folder' ? 'Folder name' : 'Task title'}
+              className="input resize-none"
+            />
+          </form>
+        </Popover.Content>
+      </Popover.Portal>
 
       {canAddProject && todoColumn && (
         <ProjectFormModal
@@ -118,6 +141,6 @@ export default function GlobalAddButton({ ownerType, ownerId, columns, folderId 
           }}
         />
       )}
-    </div>
+    </Popover.Root>
   )
 }

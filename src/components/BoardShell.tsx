@@ -227,22 +227,27 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
       />
 
       {view === 'table' ? (
-        <TableView
-          items={allItems.filter(matchesFilters)}
-          columns={columns}
-          showTypeColumn={showTypeColumn}
-          onOpenCard={setOpenCardId}
-          onMoveItem={(itemId, columnId) => {
-            const item = resolveItem(useBoardStore.getState(), itemId)
-            // A filed task isn't in any column's cardOrder, so a real move
-            // would duplicate it — only its status field should change.
-            if (item?.kind === 'task' && item.card.folderId) setCardStatus(itemId, columnId)
-            else moveItem(itemId, columnId, 0)
-          }}
-          selectable={claudeCodeReady}
-          selectedIds={selectedIds}
-          onToggleSelect={toggleSelected}
-        />
+        <>
+          <div className="flex justify-start px-5 pt-4">
+            <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="labeled" />
+          </div>
+          <TableView
+            items={allItems.filter(matchesFilters)}
+            columns={columns}
+            showTypeColumn={showTypeColumn}
+            onOpenCard={setOpenCardId}
+            onMoveItem={(itemId, columnId) => {
+              const item = resolveItem(useBoardStore.getState(), itemId)
+              // A filed task isn't in any column's cardOrder, so a real move
+              // would duplicate it — only its status field should change.
+              if (item?.kind === 'task' && item.card.folderId) setCardStatus(itemId, columnId)
+              else moveItem(itemId, columnId, 0)
+            }}
+            selectable={claudeCodeReady}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelected}
+          />
+        </>
       ) : (
         <DndContext
           sensors={sensors}
@@ -252,14 +257,32 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
           onDragEnd={handleDragEnd}
         >
           <div className="flex flex-1 items-start gap-4 overflow-x-auto p-5">
-            {activeColumns.map((column) => (
-              <Column
-                key={column.id}
-                column={column}
-                items={itemsForColumn(column.id).filter(matchesFilters)}
-                onOpenCard={setOpenCardId}
-              />
-            ))}
+            {activeColumns.map((column) => {
+              const columnItems = itemsForColumn(column.id).filter(matchesFilters)
+              // Only raw tasks sitting directly in the column count — a
+              // folder card here doesn't mean "launch everything inside it",
+              // so folder contents are deliberately excluded.
+              const taskCards = columnItems
+                .filter((item): item is Extract<BoardItem, { kind: 'task' }> => item.kind === 'task')
+                .map((item) => item.card)
+              let headerAction = null
+              if (column.name === 'To Do') {
+                headerAction = <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="compact" />
+              } else if (column.name === 'In Progress' && claudeCodeReady) {
+                headerAction = (
+                  <button
+                    type="button"
+                    onClick={() => project?.repoPath && taskCards.length > 0 && startClaudeCode(project.repoPath, buildTaskPrompt(taskCards))}
+                    disabled={taskCards.length === 0}
+                    title="Launch all tasks in this column in Claude Code"
+                    className="shrink-0 rounded-md bg-indigo-500 px-2 py-1 text-[11px] font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-slate-500 disabled:hover:bg-white/[0.06]"
+                  >
+                    Launch all
+                  </button>
+                )
+              }
+              return <Column key={column.id} column={column} items={columnItems} onOpenCard={setOpenCardId} headerAction={headerAction} />
+            })}
             {nullspaceColumn && (
               <>
                 <div className="mx-1 w-px shrink-0 self-stretch bg-white/10" aria-hidden="true" />
@@ -311,7 +334,6 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
       )}
 
       {openCardId && <CardDetailDialog cardId={openCardId} onClose={() => setOpenCardId(null)} />}
-      <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} />
     </div>
   )
 }
