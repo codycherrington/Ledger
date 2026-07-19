@@ -1,7 +1,7 @@
 import { beforeEach, vi } from 'vitest'
 import type { BoardFS } from '../src/store/persist'
 
-// TaskTray only runs inside Electron; `window.boardFS` is the bridge exposed
+// Ledger only runs inside Electron; `window.boardFS` is the bridge exposed
 // by electron/preload.cjs (see src/store/persist.ts). jsdom (the test
 // environment) has no such bridge, so every test gets a fresh in-memory
 // stand-in by default. Tests that care about persistence behavior override
