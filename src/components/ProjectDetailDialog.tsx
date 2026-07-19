@@ -18,6 +18,7 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
   const removeProjectLink = useBoardStore((s) => s.removeProjectLink)
   const addProjectAttachment = useBoardStore((s) => s.addProjectAttachment)
   const removeProjectAttachment = useBoardStore((s) => s.removeProjectAttachment)
+  const pickRepoFolder = useBoardStore((s) => s.pickRepoFolder)
 
   const [name, setName] = useState(project?.name ?? '')
   const [description, setDescription] = useState(project?.description ?? '')
@@ -82,6 +83,37 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
           onAdd={(file) => addProjectAttachment(project.id, file)}
           onRemove={(attachmentId) => removeProjectAttachment(project.id, attachmentId)}
         />
+      </Field>
+
+      <Field label="Claude Code" className="mt-5">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => updateProject(project.id, { claudeCodeEnabled: !project.claudeCodeEnabled })}
+            className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
+              project.claudeCodeEnabled
+                ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
+                : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
+            }`}
+          >
+            {project.claudeCodeEnabled ? 'Claude Code project' : 'Enable Claude Code'}
+          </button>
+          {project.claudeCodeEnabled && (
+            <>
+              <span className="truncate text-xs text-slate-500">{project.repoPath ?? 'No folder selected'}</span>
+              <button
+                type="button"
+                onClick={async () => {
+                  const folder = await pickRepoFolder()
+                  if (folder) updateProject(project.id, { repoPath: folder, claudeCodeEnabled: true })
+                }}
+                className="shrink-0 rounded-lg border border-white/10 px-2.5 py-1 text-xs font-medium text-slate-400 transition hover:border-white/20 hover:text-slate-300"
+              >
+                Choose Folder…
+              </button>
+            </>
+          )}
+        </div>
       </Field>
 
       <div className="mt-7 flex items-center justify-between border-t border-white/[0.06] pt-4">

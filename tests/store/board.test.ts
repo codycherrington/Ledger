@@ -77,6 +77,29 @@ describe('createProject / updateProject / deleteProject', () => {
     expect(useBoardStore.getState()).toEqual(before)
   })
 
+  it('updateProject patches claudeCodeEnabled and repoPath', () => {
+    const home = seedHomeColumns()
+    const projectId = useBoardStore.getState().createProject('Repo Project', undefined, home.todo)
+
+    useBoardStore.getState().updateProject(projectId, { claudeCodeEnabled: true, repoPath: '/Users/test/repo' })
+
+    const project = useBoardStore.getState().projects[projectId]
+    expect(project.claudeCodeEnabled).toBe(true)
+    expect(project.repoPath).toBe('/Users/test/repo')
+  })
+
+  it('pickRepoFolder delegates to window.boardFS.pickFolder', async () => {
+    window.boardFS!.pickFolder = vi.fn(async () => '/Users/test/chosen')
+    await expect(useBoardStore.getState().pickRepoFolder()).resolves.toBe('/Users/test/chosen')
+    expect(window.boardFS!.pickFolder).toHaveBeenCalled()
+  })
+
+  it('startClaudeCode delegates to window.boardFS.launchClaudeCode with the repo path and prompt', async () => {
+    window.boardFS!.launchClaudeCode = vi.fn(async () => {})
+    await useBoardStore.getState().startClaudeCode('/Users/test/repo', 'Do the thing')
+    expect(window.boardFS!.launchClaudeCode).toHaveBeenCalledWith('/Users/test/repo', 'Do the thing')
+  })
+
   it('deleteProject removes the project, its own columns, and its direct cards', () => {
     const home = seedHomeColumns()
     const projectId = useBoardStore.getState().createProject('Doomed', undefined, home.todo)

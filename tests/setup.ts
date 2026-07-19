@@ -13,6 +13,8 @@ export function createMockBoardFS(): BoardFS {
     putAttachment: vi.fn(async () => {}),
     getAttachment: vi.fn(async () => null),
     deleteAttachment: vi.fn(async () => {}),
+    pickFolder: vi.fn(async () => null),
+    launchClaudeCode: vi.fn(async () => {}),
   }
 }
 

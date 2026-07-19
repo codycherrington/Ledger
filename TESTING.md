@@ -85,6 +85,19 @@ to run rather than risk writing to or reading from a real folder. This means
 `readdirSync`, real `cpSync` for the migration path) rather than a
 hand-rolled fake, while still being fully isolated.
 
+The same `vi.mock` limitation bit `launchClaudeCode` even harder than a
+misdirected file read: its real implementation shells out to `open -a
+Terminal` to run the `claude` CLI, and `vi.mock('node:child_process', ...)`
+silently failed to intercept `store.cjs`'s own `require('node:child_process')`
+— the first test run actually opened 6 real Terminal windows and launched
+real `claude` processes. The fix follows the same env-var-override pattern
+rather than trying to mock a built-in a second time: `LEDGER_CLAUDE_PROJECTS_DIR`
+redirects `hasExistingSession`'s `~/.claude/projects/` lookup to a temp dir,
+and `LEDGER_DISABLE_CLAUDE_LAUNCH` (set only by `tests/electron/store.test.ts`)
+makes `launchClaudeCode` still write its `.command`/prompt temp files —
+so tests can assert on their exact contents — but skip the `spawn` call that
+would actually open Terminal.
+
 `src/store/persist.ts` and `src/store/board.ts` are safe to test directly
 without this concern: they only ever touch `window.boardFS`, which
 `tests/setup.ts` fakes with an in-memory stand-in before every test.

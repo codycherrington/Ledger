@@ -19,9 +19,21 @@ interface TableViewProps {
   showTypeColumn: boolean
   onOpenCard: (cardId: string) => void
   onMoveItem: (itemId: string, columnId: string) => void
+  selectable?: boolean
+  selectedIds?: Set<string>
+  onToggleSelect?: (cardId: string) => void
 }
 
-export default function TableView({ items, columns, showTypeColumn, onOpenCard, onMoveItem }: TableViewProps) {
+export default function TableView({
+  items,
+  columns,
+  showTypeColumn,
+  onOpenCard,
+  onMoveItem,
+  selectable = false,
+  selectedIds,
+  onToggleSelect,
+}: TableViewProps) {
   const navigate = useNavigate()
   const tags = useBoardStore(useShallow(selectAllTags))
   const updateCard = useBoardStore((s) => s.updateCard)
@@ -124,13 +136,14 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
     return out
   }, [sorted, expandedFolders, cardsById, columns])
 
-  const colSpan = showTypeColumn ? 6 : 5
+  const colSpan = (showTypeColumn ? 6 : 5) + (selectable ? 1 : 0)
 
   return (
     <div className="flex-1 overflow-auto p-5">
       <table className="w-full border-separate border-spacing-0 text-sm">
         <thead>
           <tr>
+            {selectable && <th className="w-8 border-b border-white/[0.06] px-3 py-2" aria-hidden="true" />}
             <Th label="Title" active={sortKey === 'title'} dir={sortDir} onClick={() => toggleSort('title')} />
             {showTypeColumn && (
               <th className="border-b border-white/[0.06] px-3 py-2 text-left text-[11px] font-medium tracking-wide text-slate-500 uppercase">
@@ -165,6 +178,18 @@ export default function TableView({ items, columns, showTypeColumn, onOpenCard, 
             const isExpanded = item.kind === 'folder' && expandedFolders.has(item.folder.id)
             return (
               <tr key={`${nested ? 'nested:' : ''}${id}`} className="group">
+                {selectable && (
+                  <td className="border-b border-white/[0.04] px-3 py-2.5 group-hover:bg-white/[0.02]">
+                    {item.kind === 'task' && (
+                      <input
+                        type="checkbox"
+                        checked={selectedIds?.has(item.card.id) ?? false}
+                        onChange={() => onToggleSelect?.(item.card.id)}
+                        className="h-3.5 w-3.5 rounded border-white/20 bg-transparent accent-indigo-500"
+                      />
+                    )}
+                  </td>
+                )}
                 <td
                   onClick={item.kind === 'task' || item.kind === 'project' ? () => openItem(item) : undefined}
                   className={`border-b border-white/[0.04] px-3 py-2.5 text-slate-100 group-hover:bg-white/[0.02] ${

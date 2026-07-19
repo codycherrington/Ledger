@@ -6,6 +6,7 @@ import AttachmentsEditor from './AttachmentsEditor'
 import TagPicker from './TagPicker'
 import { COLOR_CLASSES, STATUS_COLOR } from '../lib/colors'
 import { selectOwnerColumns, useBoardStore } from '../store/board'
+import { buildTaskPrompt } from '../lib/claudeCode'
 import type { Card as CardType, Priority } from '../types'
 
 const PRIORITIES: { value: Priority; label: string }[] = [
@@ -24,6 +25,8 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
   const updateCard = useBoardStore((s) => s.updateCard)
   const deleteCard = useBoardStore((s) => s.deleteCard)
   const toggleCardTag = useBoardStore((s) => s.toggleCardTag)
+  const project = useBoardStore((s) => (card?.projectId ? s.projects[card.projectId] : undefined))
+  const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
   const [title, setTitle] = useState(card?.title ?? '')
   const [summary, setSummary] = useState(card?.summary ?? '')
@@ -121,17 +124,28 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
         <button type="button" onClick={handleDelete} className="btn-danger-link">
           Delete card
         </button>
-        <button
-          type="button"
-          onClick={() => {
-            commitTitle()
-            commitSummary()
-            onClose()
-          }}
-          className="btn-primary"
-        >
-          Save
-        </button>
+        <div className="flex items-center gap-2">
+          {project && project.claudeCodeEnabled && project.repoPath && (
+            <button
+              type="button"
+              onClick={() => startClaudeCode(project.repoPath!, buildTaskPrompt([card]))}
+              className="rounded-lg border border-indigo-400/40 bg-indigo-500/20 px-3 py-1.5 text-xs font-medium text-indigo-300 transition hover:bg-indigo-500/30"
+            >
+              Start with Claude
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              commitTitle()
+              commitSummary()
+              onClose()
+            }}
+            className="btn-primary"
+          >
+            Save
+          </button>
+        </div>
       </div>
     </Modal>
   )
