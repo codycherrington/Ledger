@@ -20,13 +20,16 @@ interface ColumnProps {
   headerAction?: ReactNode
   // When true, hides the card list so the column takes up less vertical
   // space (width stays fixed) while still showing its header (name + count).
-  // The droppable ref stays on the outer container (not the hidden list) so
-  // drag-and-drop into a collapsed column keeps working.
+  // The droppable is also disabled while collapsed: its shrunken rect sitting
+  // right next to a full-height sibling column otherwise wins closestCorners'
+  // distance comparison far more often than its tiny on-screen footprint
+  // would suggest, silently swallowing drags actually aimed at that sibling.
+  // Dropping onto this status now requires expanding it first.
   collapsed?: boolean
 }
 
 export default function Column({ column, items, onOpenCard, headerAction, collapsed = false }: ColumnProps) {
-  const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' } })
+  const { setNodeRef: setDroppableRef } = useDroppable({ id: column.id, data: { type: 'column' }, disabled: collapsed })
   const isStash = column.name === 'Stash'
   const colorClasses = COLOR_CLASSES[column.color as keyof typeof COLOR_CLASSES] ?? COLOR_CLASSES.slate
 
