@@ -96,7 +96,7 @@ const FIXED_COLUMNS: { name: string; color: Column['color'] }[] = [
   { name: 'To Do', color: 'slate' },
   { name: 'In Progress', color: 'sky' },
   { name: 'Done', color: 'emerald' },
-  { name: 'NULLSPACE', color: 'violet' },
+  { name: 'Stash', color: 'violet' },
 ]
 
 type OwnerState = Pick<BoardState, 'columns' | 'projects' | 'folders'>
@@ -129,6 +129,21 @@ function backfillOwnerColumns(
   return changed ? order : null
 }
 
+// The 4th fixed column was originally named "NULLSPACE" and got renamed to
+// "Stash" — data saved under the old name needs relabeling in place (not a
+// backfill, which would otherwise see no "Stash" column present and create a
+// second, empty one alongside the pre-existing renamed-in-spirit column).
+function renameLegacyNullspaceColumns(columns: Record<string, Column>): boolean {
+  let changed = false
+  for (const [id, col] of Object.entries(columns)) {
+    if (col.name === 'NULLSPACE') {
+      columns[id] = { ...col, name: 'Stash' }
+      changed = true
+    }
+  }
+  return changed
+}
+
 // Runs on rehydrate. Ensures Home and every project's board have their 4
 // fixed columns (backfilling any missing on old data), then places any
 // project that isn't yet sitting in a Home column into Home's "To Do"
@@ -140,6 +155,8 @@ function ensureFixedPhases(state: OwnerState): OwnerState | null {
   let changed = false
   const columns = { ...state.columns }
   const projects = { ...state.projects }
+
+  if (renameLegacyNullspaceColumns(columns)) changed = true
 
   const homeExistingOrder = Object.values(columns)
     .filter((c) => c.ownerType === 'home')

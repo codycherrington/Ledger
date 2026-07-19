@@ -21,13 +21,13 @@ beforeEach(() => {
   useBoardStore.setState({ projects: {}, columns: {}, cards: {}, tags: {}, folders: {} })
 })
 
-function seedHomeColumns(): Record<'todo' | 'inProgress' | 'done' | 'nullspace', string> {
-  const ids = { todo: makeId(), inProgress: makeId(), done: makeId(), nullspace: makeId() }
+function seedHomeColumns(): Record<'todo' | 'inProgress' | 'done' | 'stash', string> {
+  const ids = { todo: makeId(), inProgress: makeId(), done: makeId(), stash: makeId() }
   const columns: Record<string, Column> = {
     [ids.todo]: { id: ids.todo, ownerType: 'home', name: 'To Do', color: 'slate', cardOrder: [] },
     [ids.inProgress]: { id: ids.inProgress, ownerType: 'home', name: 'In Progress', color: 'sky', cardOrder: [] },
     [ids.done]: { id: ids.done, ownerType: 'home', name: 'Done', color: 'emerald', cardOrder: [] },
-    [ids.nullspace]: { id: ids.nullspace, ownerType: 'home', name: 'NULLSPACE', color: 'violet', cardOrder: [] },
+    [ids.stash]: { id: ids.stash, ownerType: 'home', name: 'Stash', color: 'violet', cardOrder: [] },
   }
   useBoardStore.setState((state) => ({ columns: { ...state.columns, ...columns } }))
   return ids
@@ -46,7 +46,7 @@ describe('createProject / updateProject / deleteProject', () => {
     expect(state.columns[home.todo].cardOrder).toEqual([projectId])
 
     const ownColumns = project.columnOrder.map((id) => state.columns[id])
-    expect(ownColumns.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'NULLSPACE'])
+    expect(ownColumns.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'Stash'])
     expect(ownColumns.every((c) => c.ownerType === 'project' && c.ownerId === projectId)).toBe(true)
   })
 
@@ -618,17 +618,17 @@ describe('selectors and helpers', () => {
   })
 
   it('selectOwnerColumns always returns home columns in FIXED_COLUMNS order regardless of insertion order', () => {
-    const ids = { nullspace: makeId(), todo: makeId(), done: makeId(), inProgress: makeId() }
+    const ids = { stash: makeId(), todo: makeId(), done: makeId(), inProgress: makeId() }
     useBoardStore.setState({
       columns: {
-        [ids.nullspace]: { id: ids.nullspace, ownerType: 'home', name: 'NULLSPACE', color: 'violet', cardOrder: [] },
+        [ids.stash]: { id: ids.stash, ownerType: 'home', name: 'Stash', color: 'violet', cardOrder: [] },
         [ids.todo]: { id: ids.todo, ownerType: 'home', name: 'To Do', color: 'slate', cardOrder: [] },
         [ids.done]: { id: ids.done, ownerType: 'home', name: 'Done', color: 'emerald', cardOrder: [] },
         [ids.inProgress]: { id: ids.inProgress, ownerType: 'home', name: 'In Progress', color: 'sky', cardOrder: [] },
       },
     })
     const ordered = selectOwnerColumns(useBoardStore.getState(), 'home')
-    expect(ordered.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'NULLSPACE'])
+    expect(ordered.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'Stash'])
   })
 
   it('selectOwnerColumns for a project ignores columnOrder order and uses FIXED_COLUMNS order, dropping unknown ids', () => {
@@ -640,7 +640,7 @@ describe('selectors and helpers', () => {
     useBoardStore.setState({ projects: { ...state.projects, [projectId]: { ...state.projects[projectId], columnOrder: scrambled } } })
 
     const ordered = selectOwnerColumns(useBoardStore.getState(), 'project', projectId)
-    expect(ordered.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'NULLSPACE'])
+    expect(ordered.map((c) => c.name)).toEqual(['To Do', 'In Progress', 'Done', 'Stash'])
   })
 
   it('selectOwnerColumns for an unknown project returns an empty array', () => {
@@ -700,7 +700,7 @@ describe('rehydration (ensureFixedPhases via persist.rehydrate)', () => {
 
     const state = useBoardStore.getState()
     const homeCols = Object.values(state.columns).filter((c) => c.ownerType === 'home')
-    expect(homeCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'NULLSPACE', 'To Do'].sort())
+    expect(homeCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'Stash', 'To Do'].sort())
 
     const todo = homeCols.find((c) => c.name === 'To Do')!
     expect(todo.cardOrder).toContain(projectId)
@@ -719,7 +719,7 @@ describe('rehydration (ensureFixedPhases via persist.rehydrate)', () => {
           attachments: [],
           createdAt: 1,
           updatedAt: 1,
-          // Missing In Progress / Done / NULLSPACE columns entirely.
+          // Missing In Progress / Done / Stash columns entirely.
           columnOrder: [todoId],
           columnId: '',
         },
@@ -736,7 +736,32 @@ describe('rehydration (ensureFixedPhases via persist.rehydrate)', () => {
 
     const state = useBoardStore.getState()
     const projectCols = state.projects[projectId].columnOrder.map((id) => state.columns[id])
-    expect(projectCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'NULLSPACE', 'To Do'].sort())
+    expect(projectCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'Stash', 'To Do'].sort())
+  })
+
+  it('renames a legacy NULLSPACE column to Stash in place instead of backfilling a duplicate', async () => {
+    const columnId = 'col-nullspace'
+    window.boardFS!.loadState = vi.fn(async () => ({
+      projects: {},
+      columns: {
+        'col-todo': { id: 'col-todo', ownerType: 'home', name: 'To Do', color: 'slate', cardOrder: [] },
+        'col-inprogress': { id: 'col-inprogress', ownerType: 'home', name: 'In Progress', color: 'sky', cardOrder: [] },
+        'col-done': { id: 'col-done', ownerType: 'home', name: 'Done', color: 'emerald', cardOrder: [] },
+        [columnId]: { id: columnId, ownerType: 'home', name: 'NULLSPACE', color: 'violet', cardOrder: ['some-card'] },
+      },
+      cards: {},
+      tags: {},
+      folders: {},
+    }))
+
+    await useBoardStore.persist.rehydrate()
+
+    const state = useBoardStore.getState()
+    const homeCols = Object.values(state.columns).filter((c) => c.ownerType === 'home')
+    expect(homeCols).toHaveLength(4)
+    expect(homeCols.map((c) => c.name).sort()).toEqual(['Done', 'In Progress', 'Stash', 'To Do'].sort())
+    // Renamed in place — same id and cardOrder, not a fresh backfilled column.
+    expect(state.columns[columnId]).toMatchObject({ name: 'Stash', cardOrder: ['some-card'] })
   })
 })
 

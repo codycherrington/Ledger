@@ -107,8 +107,8 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
     if (newTaskIds) reorderFolderTasks(folder.id, newTaskIds)
   }
 
-  const activeColumns = columns.filter((c) => c.name !== 'NULLSPACE')
-  const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
+  const activeColumns = columns.filter((c) => c.name !== 'Stash')
+  const stashColumn = columns.find((c) => c.name === 'Stash')
   const allTasks = folder.taskIds.map((id) => cards[id]).filter((c): c is Card => Boolean(c))
 
   const project = folder.ownerType === 'project' && folder.ownerId ? projects[folder.ownerId] : undefined
@@ -198,13 +198,13 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                 />
               )
             })}
-            {nullspaceColumn && (
+            {stashColumn && (
               <>
                 <div className="mx-1 w-px shrink-0 self-stretch bg-white/10" aria-hidden="true" />
                 <Column
-                  key={nullspaceColumn.id}
-                  column={nullspaceColumn}
-                  items={tasksForColumn(nullspaceColumn.id)
+                  key={stashColumn.id}
+                  column={stashColumn}
+                  items={tasksForColumn(stashColumn.id)
                     .filter(matchesFilters)
                     .map((card): BoardItem => ({ kind: 'task', card }))}
                   onOpenCard={setOpenCardId}

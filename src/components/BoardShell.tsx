@@ -182,8 +182,8 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
     }
   }
 
-  const activeColumns = columns.filter((c) => c.name !== 'NULLSPACE')
-  const nullspaceColumn = columns.find((c) => c.name === 'NULLSPACE')
+  const activeColumns = columns.filter((c) => c.name !== 'Stash')
+  const stashColumn = columns.find((c) => c.name === 'Stash')
 
   const project = ownerType === 'project' && ownerId ? projects[ownerId] : undefined
   const claudeCodeReady = Boolean(project?.claudeCodeEnabled && project.repoPath)
@@ -302,13 +302,13 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
               }
               return <Column key={column.id} column={column} items={columnItems} onOpenCard={setOpenCardId} headerAction={headerAction} />
             })}
-            {nullspaceColumn && (
+            {stashColumn && (
               <>
                 <div className="mx-1 w-px shrink-0 self-stretch bg-white/10" aria-hidden="true" />
                 <Column
-                  key={nullspaceColumn.id}
-                  column={nullspaceColumn}
-                  items={itemsForColumn(nullspaceColumn.id).filter(matchesFilters)}
+                  key={stashColumn.id}
+                  column={stashColumn}
+                  items={itemsForColumn(stashColumn.id).filter(matchesFilters)}
                   onOpenCard={setOpenCardId}
                 />
               </>
