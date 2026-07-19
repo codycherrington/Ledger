@@ -9,6 +9,10 @@ import type { BoardItem, Card, Column, Priority } from '../types'
 
 const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', high: 'High' }
 const TYPE_LABEL: Record<BoardItem['kind'], string> = { task: 'Task', project: 'Project', folder: 'Folder' }
+// Ascending status order: In Progress leads since that's what's actively
+// being worked, then To Do, then the two "not being worked right now"
+// states. Independent of FIXED_COLUMNS' board layout order.
+const STATUS_SORT_ORDER: Record<string, number> = { 'In Progress': 0, 'To Do': 1, Done: 2, Stash: 3 }
 
 type SortKey = 'title' | 'priority' | 'dueDate' | 'status'
 type Row = { kind: 'item'; item: BoardItem; nested: boolean } | { kind: 'empty-folder'; folderId: string }
@@ -22,6 +26,10 @@ interface TableViewProps {
   selectable?: boolean
   selectedIds?: Set<string>
   onToggleSelect?: (cardId: string) => void
+  // Applied to a folder's filed tasks when expanded, so nested rows honor the
+  // same search/priority/tag/date/status filters as the top-level rows above
+  // them instead of always showing every task the folder holds.
+  folderTaskFilter?: (card: Card) => boolean
 }
 
 export default function TableView({
@@ -33,6 +41,7 @@ export default function TableView({
   selectable = false,
   selectedIds,
   onToggleSelect,
+  folderTaskFilter,
 }: TableViewProps) {
   const navigate = useNavigate()
   const tags = useBoardStore(useShallow(selectAllTags))
@@ -44,7 +53,6 @@ export default function TableView({
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set())
 
   const columnNameById = useMemo(() => new Map(columns.map((c) => [c.id, c.name])), [columns])
-  const columnIndexById = useMemo(() => new Map(columns.map((c, i) => [c.id, i])), [columns])
   const tagById = useMemo(() => new Map(tags.map((t) => [t.id, t])), [tags])
 
   function toggleSort(key: SortKey) {
@@ -107,25 +115,31 @@ export default function TableView({
         case 'dueDate':
           cmp = (dueDateOf(a) ?? '').localeCompare(dueDateOf(b) ?? '')
           break
-        case 'status':
-          cmp = (columnIndexById.get(columnIdOf(a)) ?? 0) - (columnIndexById.get(columnIdOf(b)) ?? 0)
+        case 'status': {
+          const rankA = STATUS_SORT_ORDER[columnNameById.get(columnIdOf(a)) ?? ''] ?? 99
+          const rankB = STATUS_SORT_ORDER[columnNameById.get(columnIdOf(b)) ?? ''] ?? 99
+          cmp = rankA - rankB
           break
+        }
       }
       return cmp * sortDir
     })
     return rows
-  }, [items, sortKey, sortDir, columnIndexById])
+  }, [items, sortKey, sortDir, columnNameById])
 
   // Folder children render as extra rows directly under their parent,
   // outside the sort above — same as the Kanban dropdown, which always shows
-  // a folder's own tasks in their own order regardless of board sort/filter.
+  // a folder's own tasks in their own order regardless of board sort. Filters
+  // still apply, though (folderTaskFilter), so a task that doesn't match the
+  // active filters doesn't show just because its folder does.
   const rows = useMemo(() => {
     const out: Row[] = []
     for (const item of sorted) {
       out.push({ kind: 'item', item, nested: false })
       if (item.kind === 'folder' && expandedFolders.has(item.folder.id)) {
         const rawTasks = item.folder.taskIds.map((cid) => cardsById[cid]).filter((c): c is Card => Boolean(c))
-        const tasks = sortFolderTasksForDisplay(rawTasks, columns)
+        const filteredTasks = folderTaskFilter ? rawTasks.filter(folderTaskFilter) : rawTasks
+        const tasks = sortFolderTasksForDisplay(filteredTasks, columns)
         if (tasks.length === 0) {
           out.push({ kind: 'empty-folder', folderId: item.folder.id })
         } else {
@@ -134,7 +148,7 @@ export default function TableView({
       }
     }
     return out
-  }, [sorted, expandedFolders, cardsById, columns])
+  }, [sorted, expandedFolders, cardsById, columns, folderTaskFilter])
 
   const colSpan = (showTypeColumn ? 6 : 5) + (selectable ? 1 : 0)
 

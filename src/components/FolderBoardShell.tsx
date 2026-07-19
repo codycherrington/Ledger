@@ -23,8 +23,9 @@ import ViewToggle from './ViewToggle'
 import TableView from './TableView'
 import SaveStatusLight from './SaveStatusLight'
 import GlobalAddButton from './GlobalAddButton'
+import OpenClaudeCodeButton from './OpenClaudeCodeButton'
 import { useViewModeStore } from '../store/viewMode'
-import { BackIcon } from './icons'
+import { BackIcon, ChevronIcon } from './icons'
 import type { BoardItem, Card, Folder, Priority } from '../types'
 
 interface FolderBoardShellProps {
@@ -51,6 +52,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const [tagFilter, setTagFilter] = useState<string[]>([])
   const [statusFilter, setStatusFilter] = useState<string[]>([])
   const [dateFilter, setDateFilter] = useState<DateFilter[]>([])
+  const [doneCollapsed, setDoneCollapsed] = useState(false)
   const view = useViewModeStore((s) => s.view)
   const setView = useViewModeStore((s) => s.setView)
 
@@ -144,6 +146,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
         onStatusColumnIdsChange={setStatusFilter}
         dateFilters={dateFilter}
         onDateFiltersChange={setDateFilter}
+        action={claudeCodeReady && project?.repoPath ? <OpenClaudeCodeButton repoPath={project.repoPath} /> : undefined}
       />
 
       {view === 'table' ? (
@@ -154,7 +157,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
           <TableView
             items={allTasks.filter(matchesFilters).map((card): BoardItem => ({ kind: 'task', card }))}
             columns={columns}
-            showTypeColumn={false}
+            showTypeColumn
             onOpenCard={setOpenCardId}
             onMoveItem={(itemId, columnId) => setCardStatus(itemId, columnId)}
           />
@@ -187,6 +190,18 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                     Launch all
                   </button>
                 )
+              } else if (column.name === 'Done') {
+                headerAction = (
+                  <button
+                    type="button"
+                    onClick={() => setDoneCollapsed((v) => !v)}
+                    aria-label={doneCollapsed ? 'Expand Done column' : 'Collapse Done column'}
+                    title={doneCollapsed ? 'Expand column' : 'Collapse column'}
+                    className="icon-btn shrink-0"
+                  >
+                    <ChevronIcon className={`h-3.5 w-3.5 transition ${doneCollapsed ? '' : 'rotate-90'}`} />
+                  </button>
+                )
               }
               return (
                 <Column
@@ -195,6 +210,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                   items={taskCards.map((card): BoardItem => ({ kind: 'task', card }))}
                   onOpenCard={setOpenCardId}
                   headerAction={headerAction}
+                  collapsed={column.name === 'Done' && doneCollapsed}
                 />
               )
             })}

@@ -42,6 +42,7 @@ interface BoardState {
 
   pickRepoFolder: () => Promise<string | null>
   startClaudeCode: (repoPath: string, prompt: string) => Promise<void>
+  openClaudeCodeHere: (repoPath: string) => Promise<void>
 
   addProjectLink: (projectId: string, label: string, url: string) => void
   updateProjectLink: (projectId: string, linkId: string, patch: Partial<Pick<ResourceLink, 'label' | 'url'>>) => void
@@ -266,6 +267,10 @@ export const useBoardStore = create<BoardState>()(
 
       startClaudeCode: async (repoPath, prompt) => {
         await requireFS().launchClaudeCode(repoPath, prompt)
+      },
+
+      openClaudeCodeHere: async (repoPath) => {
+        await requireFS().openClaudeCodeTerminal(repoPath)
       },
 
       deleteProject: (id) => {
