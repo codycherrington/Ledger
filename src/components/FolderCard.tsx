@@ -3,24 +3,15 @@ import { useNavigate } from 'react-router-dom'
 import { useDroppable } from '@dnd-kit/core'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { useShallow } from 'zustand/react/shallow'
-import { COLOR_CLASSES, COLOR_NAMES, PRIORITY_COLOR, type ColorName } from '../lib/colors'
+import { COLOR_CLASSES, PRIORITY_COLOR, type ColorName } from '../lib/colors'
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { useSortableItem } from '../lib/useSortableItem'
 import { buildTaskPrompt } from '../lib/claudeCode'
-import {
-  selectAllTags,
-  selectFolderTasks,
-  selectOwnerColumns,
-  sortFolderTasksForDisplay,
-  useBoardStore,
-} from '../store/board'
-import Modal from './Modal'
+import { selectAllTags, selectFolderTasks, selectOwnerColumns, sortFolderTasksForDisplay, useBoardStore } from '../store/board'
 import ItemTypeBadge from './ItemTypeBadge'
 import Card from './Card'
-import LinksEditor from './LinksEditor'
-import AttachmentsEditor from './AttachmentsEditor'
-import TagPicker from './TagPicker'
 import CopyButton from './CopyButton'
+import FolderDetailDialog from './FolderDetailDialog'
 import { ChevronIcon, FolderIcon, InfoIcon, PlusIcon } from './icons'
 import type { Folder, Priority } from '../types'
 
@@ -145,7 +136,7 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
         {expanded && <FolderTaskList folder={folder} onOpenCard={onOpenCard} />}
       </div>
 
-      <FolderFormModal open={editing} onOpenChange={setEditing} folder={folder} />
+      <FolderDetailDialog open={editing} onOpenChange={setEditing} folder={folder} />
     </>
   )
 }
@@ -210,172 +201,3 @@ function FolderTaskList({ folder, onOpenCard }: { folder: Folder; onOpenCard: (c
   )
 }
 
-function FolderFormModal({
-  open,
-  onOpenChange,
-  folder,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  folder: Folder
-}) {
-  const updateFolder = useBoardStore((s) => s.updateFolder)
-  const deleteFolder = useBoardStore((s) => s.deleteFolder)
-  const toggleFolderTag = useBoardStore((s) => s.toggleFolderTag)
-  const addFolderLink = useBoardStore((s) => s.addFolderLink)
-  const updateFolderLink = useBoardStore((s) => s.updateFolderLink)
-  const removeFolderLink = useBoardStore((s) => s.removeFolderLink)
-  const addFolderAttachment = useBoardStore((s) => s.addFolderAttachment)
-  const removeFolderAttachment = useBoardStore((s) => s.removeFolderAttachment)
-  const [name, setName] = useState(folder.name)
-  const [description, setDescription] = useState(folder.description ?? '')
-  const [color, setColor] = useState<ColorName>((folder.color as ColorName) ?? 'slate')
-  const [priority, setPriority] = useState<Priority | undefined>(folder.priority)
-  const [dueDate, setDueDate] = useState(folder.dueDate ?? '')
-
-  function handleDelete() {
-    if (window.confirm(`Delete "${folder.name}"? Its tasks will move back to the board.`)) {
-      deleteFolder(folder.id)
-      onOpenChange(false)
-    }
-  }
-
-  return (
-    <Modal
-      open={open}
-      onOpenChange={(next) => {
-        onOpenChange(next)
-        if (next) {
-          setName(folder.name)
-          setDescription(folder.description ?? '')
-          setColor((folder.color as ColorName) ?? 'slate')
-          setPriority(folder.priority)
-          setDueDate(folder.dueDate ?? '')
-        }
-      }}
-      title="Edit Folder"
-    >
-      <form
-        onSubmit={(e) => {
-          e.preventDefault()
-          if (!name.trim()) return
-          updateFolder(folder.id, {
-            name: name.trim(),
-            description: description.trim() || undefined,
-            color,
-            priority,
-            dueDate: dueDate || undefined,
-          })
-          onOpenChange(false)
-        }}
-      >
-        <label className="block text-sm font-medium text-slate-300">Name</label>
-        <input
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="input mt-1.5"
-          placeholder="e.g. Phase 1"
-        />
-        <div className="mt-4 flex items-center justify-between">
-          <label className="block text-sm font-medium text-slate-300">Description (optional)</label>
-          {description.trim() && <CopyButton text={description} label="Copy description" />}
-        </div>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={3}
-          className="input mt-1.5 resize-none"
-        />
-        <div className="mt-4 grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Priority</label>
-            <div className="mt-1.5 flex gap-1.5">
-              {(['low', 'med', 'high'] as Priority[]).map((p) => (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setPriority(priority === p ? undefined : p)}
-                  className={`rounded-lg border px-2.5 py-1 text-xs font-medium transition ${
-                    priority === p
-                      ? 'border-indigo-400/40 bg-indigo-500/20 text-indigo-300'
-                      : 'border-white/10 text-slate-400 hover:border-white/20 hover:text-slate-300'
-                  }`}
-                >
-                  {PRIORITY_LABEL[p]}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-300">Due date</label>
-            <input
-              type="date"
-              value={dueDate}
-              onChange={(e) => setDueDate(e.target.value)}
-              className="input mt-1.5 w-auto px-2.5 py-1.5 [color-scheme:dark]"
-            />
-          </div>
-        </div>
-        <label className="mt-4 block text-sm font-medium text-slate-300">Color</label>
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {COLOR_NAMES.map((c) => (
-            <button
-              key={c}
-              type="button"
-              aria-label={c}
-              onClick={() => setColor(c)}
-              className={`h-5 w-5 rounded-full transition ${COLOR_CLASSES[c].dot} ${
-                color === c ? 'ring-2 ring-white/80 ring-offset-2 ring-offset-panel' : 'hover:scale-110'
-              }`}
-            />
-          ))}
-        </div>
-        <div className="mt-6 flex justify-end gap-2">
-          <button type="button" onClick={() => onOpenChange(false)} className="btn-ghost">
-            Cancel
-          </button>
-          <button type="submit" disabled={!name.trim()} className="btn-primary">
-            Save
-          </button>
-        </div>
-      </form>
-
-      <div className="mt-5 border-t border-white/[0.06] pt-4">
-        <label className="block text-sm font-medium text-slate-300">Tags</label>
-        <div className="mt-1.5">
-          <TagPicker activeTagIds={folder.tagIds} onToggle={(tagId) => toggleFolderTag(folder.id, tagId)} />
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-white/[0.06] pt-4">
-        <label className="block text-sm font-medium text-slate-300">Resources</label>
-        <div className="mt-1.5">
-          <LinksEditor
-            links={folder.links}
-            onAdd={(label, url) => addFolderLink(folder.id, label, url)}
-            onUpdate={(linkId, patch) => updateFolderLink(folder.id, linkId, patch)}
-            onRemove={(linkId) => removeFolderLink(folder.id, linkId)}
-          />
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-white/[0.06] pt-4">
-        <label className="block text-sm font-medium text-slate-300">Attachments</label>
-        <div className="mt-1.5">
-          <AttachmentsEditor
-            attachments={folder.attachments}
-            onAdd={(file) => addFolderAttachment(folder.id, file)}
-            onRemove={(attachmentId) => removeFolderAttachment(folder.id, attachmentId)}
-          />
-        </div>
-      </div>
-
-      <div className="mt-5 border-t border-white/[0.06] pt-4">
-        <button type="button" onClick={handleDelete} className="btn-danger-link">
-          Delete folder
-        </button>
-      </div>
-    </Modal>
-  )
-}
