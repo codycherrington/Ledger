@@ -17,9 +17,12 @@ interface FolderDetailDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   folder: Folder
+  // Opens straight into edit mode — used right after creating a folder from
+  // GlobalAddButton, so the user can immediately type over the seeded name.
+  startInEditMode?: boolean
 }
 
-export default function FolderDetailDialog({ open, onOpenChange, folder }: FolderDetailDialogProps) {
+export default function FolderDetailDialog({ open, onOpenChange, folder, startInEditMode }: FolderDetailDialogProps) {
   const updateFolder = useBoardStore((s) => s.updateFolder)
   const deleteFolder = useBoardStore((s) => s.deleteFolder)
   const toggleFolderTag = useBoardStore((s) => s.toggleFolderTag)
@@ -46,7 +49,7 @@ export default function FolderDetailDialog({ open, onOpenChange, folder }: Folde
       setColor((folder.color as ColorName) ?? 'slate')
       setPriority(folder.priority)
       setDueDate(folder.dueDate ?? '')
-      setMode('view')
+      setMode(startInEditMode ? 'edit' : 'view')
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, folder.id])
@@ -81,19 +84,17 @@ export default function FolderDetailDialog({ open, onOpenChange, folder }: Folde
       title={folder.name}
       size="lg"
       hideVisualTitle
+      headerAction={
+        mode === 'view' && (
+          <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
+            Edit
+          </button>
+        )
+      }
       footer={
         <div className="flex items-center justify-between">
           {mode === 'view' ? (
-            <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
-              Edit
-            </button>
-          ) : (
-            <button type="button" onClick={handleSave} disabled={!name.trim()} className="btn-primary">
-              Save
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            {mode === 'view' && canStartClaude && (
+            canStartClaude ? (
               <button
                 type="button"
                 onClick={() => startClaudeCode(ownerProject.repoPath!, claudePrompt)}
@@ -101,23 +102,30 @@ export default function FolderDetailDialog({ open, onOpenChange, folder }: Folde
               >
                 Start with Claude Code
               </button>
-            )}
-            {mode === 'view' ? (
-              <button type="button" onClick={() => onOpenChange(false)} className="btn-primary">
-                Done
-              </button>
             ) : (
-              <button type="button" onClick={handleDelete} className="btn-danger">
-                Delete
-              </button>
-            )}
-          </div>
+              <span />
+            )
+          ) : (
+            <button type="button" onClick={handleDelete} className="btn-danger">
+              Delete
+            </button>
+          )}
+          {mode === 'view' ? (
+            <button type="button" onClick={() => onOpenChange(false)} className="btn-primary">
+              Done
+            </button>
+          ) : (
+            <button type="button" onClick={handleSave} disabled={!name.trim()} className="btn-primary">
+              Save
+            </button>
+          )}
         </div>
       }
     >
       {mode === 'edit' ? (
         <input
           autoFocus
+          onFocus={(e) => e.target.select()}
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="e.g. Phase 1"

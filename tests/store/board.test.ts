@@ -328,6 +328,24 @@ describe('cards: creation, filing, moving, status', () => {
     expect(state.cards[cardId].folderId).toBe(folderB)
   })
 
+  it('fileTaskInFolder into a folder owned by a different board remaps projectId and columnId to that board\'s equivalent status column', () => {
+    const home = seedHomeColumns()
+    const projectId = useBoardStore.getState().createProject('Website Relaunch', undefined, home.todo)
+    const cardId = useBoardStore.getState().createCard(home.inProgress, 'Home task')
+    const project = useBoardStore.getState().projects[projectId]
+    const projectFolderId = useBoardStore.getState().createFolder('project', projectId, project.columnOrder[0], 'Phase 1')
+
+    useBoardStore.getState().fileTaskInFolder(cardId, projectFolderId, 0)
+
+    const state = useBoardStore.getState()
+    const card = state.cards[cardId]
+    expect(card.projectId).toBe(projectId)
+    expect(card.folderId).toBe(projectFolderId)
+    // Status ("In Progress") is preserved, but re-homed to the project's own In Progress column id.
+    expect(card.columnId).toBe(project.columnOrder[1])
+    expect(state.columns[card.columnId].name).toBe('In Progress')
+  })
+
   it('unfileTaskFromFolder is the inverse: gives the card a real column placement again', () => {
     const home = seedHomeColumns()
     const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
@@ -469,6 +487,80 @@ describe('cards: creation, filing, moving, status', () => {
       const home = seedHomeColumns()
       const before = useBoardStore.getState()
       useBoardStore.getState().moveItem('missing-item', home.todo, 0)
+      expect(useBoardStore.getState()).toEqual(before)
+    })
+  })
+
+  describe('moveTaskToProject', () => {
+    it('attaches a standalone Home task to a project, preserving its status', () => {
+      const home = seedHomeColumns()
+      const projectId = useBoardStore.getState().createProject('Website Relaunch', undefined, home.todo)
+      const cardId = useBoardStore.getState().createCard(home.inProgress, 'Task')
+
+      useBoardStore.getState().moveTaskToProject(cardId, projectId)
+
+      const state = useBoardStore.getState()
+      const project = state.projects[projectId]
+      const card = state.cards[cardId]
+      expect(card.projectId).toBe(projectId)
+      expect(card.columnId).toBe(project.columnOrder[1]) // In Progress, preserved
+      expect(state.columns[home.inProgress].cardOrder).not.toContain(cardId)
+      expect(state.columns[project.columnOrder[1]].cardOrder).toEqual([cardId])
+    })
+
+    it('unfiles the task from its folder when attaching it to a project', () => {
+      const home = seedHomeColumns()
+      const projectId = useBoardStore.getState().createProject('P', undefined, home.todo)
+      const folderId = useBoardStore.getState().createFolder('home', undefined, home.todo, 'Phase 1')
+      const cardId = useBoardStore.getState().createCardInFolder(folderId, 'Task')
+
+      useBoardStore.getState().moveTaskToProject(cardId, projectId)
+
+      const state = useBoardStore.getState()
+      expect(state.folders[folderId].taskIds).toEqual([])
+      expect(state.cards[cardId].folderId).toBeUndefined()
+      expect(state.cards[cardId].projectId).toBe(projectId)
+    })
+
+    it('moves a task directly from one project to another, preserving status', () => {
+      const home = seedHomeColumns()
+      const projectA = useBoardStore.getState().createProject('A', undefined, home.todo)
+      const projectB = useBoardStore.getState().createProject('B', undefined, home.todo)
+      const colA = useBoardStore.getState().projects[projectA].columnOrder[2] // Done
+      const cardId = useBoardStore.getState().createCard(colA, 'Task')
+
+      useBoardStore.getState().moveTaskToProject(cardId, projectB)
+
+      const state = useBoardStore.getState()
+      const colBDone = state.projects[projectB].columnOrder[2]
+      expect(state.cards[cardId].projectId).toBe(projectB)
+      expect(state.cards[cardId].columnId).toBe(colBDone)
+      expect(state.columns[colA].cardOrder).not.toContain(cardId)
+      expect(state.columns[colBDone].cardOrder).toEqual([cardId])
+    })
+
+    it('passing undefined sends a project task back to Home, preserving status', () => {
+      const home = seedHomeColumns()
+      const projectId = useBoardStore.getState().createProject('P', undefined, home.todo)
+      const colInProgress = useBoardStore.getState().projects[projectId].columnOrder[1]
+      const cardId = useBoardStore.getState().createCard(colInProgress, 'Task')
+
+      useBoardStore.getState().moveTaskToProject(cardId, undefined)
+
+      const state = useBoardStore.getState()
+      expect(state.cards[cardId].projectId).toBeUndefined()
+      expect(state.cards[cardId].columnId).toBe(home.inProgress)
+      expect(state.columns[home.inProgress].cardOrder).toEqual([cardId])
+    })
+
+    it('is a no-op if the card or target project does not exist', () => {
+      const home = seedHomeColumns()
+      const cardId = useBoardStore.getState().createCard(home.todo, 'Task')
+      const before = useBoardStore.getState()
+
+      useBoardStore.getState().moveTaskToProject('missing-card', undefined)
+      useBoardStore.getState().moveTaskToProject(cardId, 'missing-project')
+
       expect(useBoardStore.getState()).toEqual(before)
     })
   })
