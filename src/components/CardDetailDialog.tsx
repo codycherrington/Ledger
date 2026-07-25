@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 import Modal from './Modal'
+import Menu from './Menu'
 import LinksEditor from './LinksEditor'
 import AttachmentsEditor from './AttachmentsEditor'
 import TagPicker from './TagPicker'
@@ -9,7 +10,7 @@ import { COLOR_CLASSES, PRIORITY_COLOR, STATUS_COLOR, type ColorName } from '../
 import { formatDueDate, isDueToday, isOverdue } from '../lib/dates'
 import { selectAllTags, selectOwnerColumns, useBoardStore } from '../store/board'
 import { buildTaskPrompt } from '../lib/claudeCode'
-import type { Card as CardType, Priority } from '../types'
+import type { Card as CardType, Folder, Priority } from '../types'
 
 const PRIORITIES: { value: Priority; label: string }[] = [
   { value: 'low', label: 'Low' },
@@ -21,9 +22,12 @@ const PRIORITY_LABEL: Record<Priority, string> = { low: 'Low', med: 'Medium', hi
 interface CardDetailDialogProps {
   cardId: string
   onClose: () => void
+  // Opens straight into edit mode — used right after creating a card from
+  // GlobalAddButton, so the user can immediately type over the seeded title.
+  startInEditMode?: boolean
 }
 
-export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogProps) {
+export default function CardDetailDialog({ cardId, onClose, startInEditMode }: CardDetailDialogProps) {
   const card = useBoardStore((s) => s.cards[cardId])
   const updateCard = useBoardStore((s) => s.updateCard)
   const deleteCard = useBoardStore((s) => s.deleteCard)
@@ -38,7 +42,8 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
   useEffect(() => {
     setTitle(card?.title ?? '')
     setSummary(card?.summary ?? '')
-    setMode('view')
+    setMode(startInEditMode ? 'edit' : 'view')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.id, card?.title, card?.summary])
 
   if (!card) return null
@@ -75,19 +80,17 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
       title={card.title}
       size="lg"
       hideVisualTitle
+      headerAction={
+        mode === 'view' && (
+          <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
+            Edit
+          </button>
+        )
+      }
       footer={
         <div className="flex items-center justify-between">
           {mode === 'view' ? (
-            <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
-              Edit
-            </button>
-          ) : (
-            <button type="button" onClick={handleSave} className="btn-primary">
-              Save
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            {mode === 'view' && canStartClaude && (
+            canStartClaude ? (
               <button
                 type="button"
                 onClick={() => startClaudeCode(project.repoPath!, buildTaskPrompt([card]))}
@@ -95,22 +98,30 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
               >
                 Start with Claude Code
               </button>
-            )}
-            {mode === 'view' ? (
-              <button type="button" onClick={onClose} className="btn-primary">
-                Done
-              </button>
             ) : (
-              <button type="button" onClick={handleDelete} className="btn-danger">
-                Delete
-              </button>
-            )}
-          </div>
+              <span />
+            )
+          ) : (
+            <button type="button" onClick={handleDelete} className="btn-danger">
+              Delete
+            </button>
+          )}
+          {mode === 'view' ? (
+            <button type="button" onClick={onClose} className="btn-primary">
+              Done
+            </button>
+          ) : (
+            <button type="button" onClick={handleSave} className="btn-primary">
+              Save
+            </button>
+          )}
         </div>
       }
     >
       {mode === 'edit' ? (
         <input
+          autoFocus
+          onFocus={(e) => e.target.select()}
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={commitTitle}
@@ -172,6 +183,15 @@ export default function CardDetailDialog({ cardId, onClose }: CardDetailDialogPr
           ) : (
             <p className="text-xs text-slate-600">No due date</p>
           )}
+        </Field>
+      </div>
+
+      <div className="mt-4 grid grid-cols-2 gap-4">
+        <Field label="Project">
+          <CardProjectField card={card} readOnly={mode === 'view'} />
+        </Field>
+        <Field label="Folder">
+          <CardFolderField card={card} readOnly={mode === 'view'} />
         </Field>
       </div>
 
@@ -272,6 +292,74 @@ function StatusSection({ card, readOnly }: { card: CardType; readOnly?: boolean 
         )
       })}
     </div>
+  )
+}
+
+const pickerTriggerClasses =
+  'max-w-full truncate rounded-lg border border-white/10 px-2.5 py-1.5 text-xs font-medium text-slate-300 transition hover:border-white/20 hover:text-slate-100'
+
+function CardProjectField({ card, readOnly }: { card: CardType; readOnly?: boolean }) {
+  const projects = useBoardStore(useShallow((s) => Object.values(s.projects)))
+  const moveTaskToProject = useBoardStore((s) => s.moveTaskToProject)
+  const current = projects.find((p) => p.id === card.projectId)
+
+  if (readOnly) {
+    return <p className={current ? 'text-sm text-slate-300' : 'text-xs text-slate-600'}>{current?.name ?? 'None'}</p>
+  }
+
+  return (
+    <Menu
+      trigger={
+        <button type="button" className={pickerTriggerClasses}>
+          {current?.name ?? 'None'}
+        </button>
+      }
+      items={[
+        { label: 'None', onSelect: () => moveTaskToProject(card.id, undefined) },
+        ...projects.map((p) => ({ label: p.name, onSelect: () => moveTaskToProject(card.id, p.id) })),
+      ]}
+    />
+  )
+}
+
+function folderOwnerLabel(folder: Folder, projects: Record<string, { name: string }>): string {
+  if (folder.ownerType === 'home') return 'Home'
+  return projects[folder.ownerId ?? '']?.name ?? 'Project'
+}
+
+function CardFolderField({ card, readOnly }: { card: CardType; readOnly?: boolean }) {
+  const folders = useBoardStore(useShallow((s) => Object.values(s.folders)))
+  const projects = useBoardStore(useShallow((s) => s.projects))
+  const fileTaskInFolder = useBoardStore((s) => s.fileTaskInFolder)
+  const unfileTaskFromFolder = useBoardStore((s) => s.unfileTaskFromFolder)
+  const current = folders.find((f) => f.id === card.folderId)
+  const currentLabel = current ? `${current.name} — ${folderOwnerLabel(current, projects)}` : 'None'
+
+  if (readOnly) {
+    return <p className={current ? 'text-sm text-slate-300' : 'text-xs text-slate-600'}>{currentLabel}</p>
+  }
+
+  function unfile() {
+    if (!card.folderId) return
+    const column = useBoardStore.getState().columns[card.columnId]
+    unfileTaskFromFolder(card.id, card.columnId, column ? column.cardOrder.length : 0)
+  }
+
+  return (
+    <Menu
+      trigger={
+        <button type="button" className={pickerTriggerClasses}>
+          {currentLabel}
+        </button>
+      }
+      items={[
+        { label: 'None', onSelect: unfile },
+        ...folders.map((f) => ({
+          label: `${f.name} — ${folderOwnerLabel(f, projects)}`,
+          onSelect: () => fileTaskInFolder(card.id, f.id, f.taskIds.length),
+        })),
+      ]}
+    />
   )
 }
 

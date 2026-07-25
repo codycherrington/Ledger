@@ -27,6 +27,17 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
   const { attributes, listeners, setNodeRef, style } = useSortableItem(folder.id, { columnId: folder.columnId })
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
+  // Lets a standalone task be dragged straight onto the collapsed card to
+  // file it, without needing to expand the folder first. A distinct id from
+  // the expanded FolderTaskList's own `folder-drop:<id>` droppable below (and
+  // disabled whenever that one is actually mounted), so the two never
+  // register the same id at once — resolveDropTarget only reads `data.type`/
+  // `data.folderId`, not the literal id, so both resolve identically.
+  const { setNodeRef: setCardDropRef, isOver: isCardDropOver } = useDroppable({
+    id: `folder-card-drop:${folder.id}`,
+    data: { type: 'folder', folderId: folder.id },
+    disabled: expanded,
+  })
   const colorClasses = COLOR_CLASSES[folder.color as ColorName] ?? COLOR_CLASSES.slate
   const allTags = useBoardStore(useShallow(selectAllTags))
   const folderTags = allTags.filter((t) => folder.tagIds.includes(t.id))
@@ -37,7 +48,12 @@ export default function FolderCard({ folder, onOpenCard }: FolderCardProps) {
 
   return (
     <>
-      <div className="group rounded-xl border border-white/[0.07] bg-raised shadow-sm shadow-black/20 transition hover:border-white/[0.16]">
+      <div
+        ref={setCardDropRef}
+        className={`group rounded-xl border shadow-sm shadow-black/20 transition hover:border-white/[0.16] ${
+          isCardDropOver ? 'border-indigo-400/60 bg-indigo-500/[0.08]' : 'border-white/[0.07] bg-raised'
+        }`}
+      >
         {/* The sortable ref (for dragging the folder itself between columns)
             is scoped to just this header, not the whole card — the expanded
             task list below is a separate droppable (`folder-drop:<id>`, see
@@ -146,7 +162,7 @@ function FolderTaskList({ folder, onOpenCard }: { folder: Folder; onOpenCard: (c
   const ownerColumns = useBoardStore(useShallow((s) => selectOwnerColumns(s, folder.ownerType, folder.ownerId)))
   const tasks = sortFolderTasksForDisplay(rawTasks, ownerColumns)
   const createCardInFolder = useBoardStore((s) => s.createCardInFolder)
-  const { setNodeRef: setDropRef } = useDroppable({
+  const { setNodeRef: setDropRef, isOver } = useDroppable({
     id: `folder-drop:${folder.id}`,
     data: { type: 'folder', folderId: folder.id },
   })
@@ -164,7 +180,7 @@ function FolderTaskList({ folder, onOpenCard }: { folder: Folder; onOpenCard: (c
     <div
       ref={setDropRef}
       onClick={(e) => e.stopPropagation()}
-      className="min-h-[3.5rem] space-y-2 border-t border-white/[0.06] p-2.5"
+      className={`min-h-[3.5rem] space-y-2 border-t border-white/[0.06] p-2.5 transition ${isOver ? 'bg-indigo-500/[0.08]' : ''}`}
     >
       <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
         {tasks.map((task) => (

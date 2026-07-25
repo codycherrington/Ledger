@@ -72,6 +72,11 @@ interface BoardState {
   fileTaskInFolder: (cardId: string, folderId: string, toIndex: number) => void
   unfileTaskFromFolder: (cardId: string, toColumnId: string, toIndex: number) => void
   reorderFolderTasks: (folderId: string, newOrder: string[]) => void
+  // Attaches a standalone (or already-owned) task to a project's own board —
+  // or, when projectId is undefined, moves it back to Home — unfiling it from
+  // any folder along the way. Its status (To Do/In Progress/Done/Stash) is
+  // preserved across the ownership change via remapCardOwner.
+  moveTaskToProject: (cardId: string, projectId: string | undefined) => void
   updateCard: (
     id: string,
     patch: Partial<Pick<Card, 'title' | 'summary' | 'priority' | 'dueDate'>>,
@@ -99,6 +104,25 @@ const FIXED_COLUMNS: { name: string; color: Column['color'] }[] = [
   { name: 'Done', color: 'emerald' },
   { name: 'Stash', color: 'violet' },
 ]
+
+// Given a card and a target board owner (Home, or a specific project),
+// resolves what the card's projectId/columnId should become to land on that
+// owner's board while preserving its current status (matched by column
+// name, e.g. "In Progress" -> "In Progress") rather than resetting it.
+// Returns null only if the target owner has no columns at all, which
+// shouldn't happen once ensureFixedPhases has run.
+function remapCardOwner(
+  state: Pick<BoardState, 'columns' | 'projects'>,
+  card: Card,
+  targetOwnerType: ColumnOwnerType,
+  targetOwnerId: string | undefined,
+): { projectId: string | undefined; columnId: string } | null {
+  const statusName = state.columns[card.columnId]?.name ?? 'To Do'
+  const targetColumns = selectOwnerColumns(state, targetOwnerType, targetOwnerId)
+  const targetColumn = targetColumns.find((c) => c.name === statusName) ?? targetColumns[0]
+  if (!targetColumn) return null
+  return { projectId: targetOwnerType === 'project' ? targetOwnerId : undefined, columnId: targetColumn.id }
+}
 
 type OwnerState = Pick<BoardState, 'columns' | 'projects' | 'folders'>
 
@@ -531,13 +555,19 @@ export const useBoardStore = create<BoardState>()(
 
       // Files a task into a folder: pulls it out of its current column (if
       // any) or a different folder (if already filed elsewhere), then adds it
-      // to the target folder's taskIds. Its columnId is left as-is — that's
-      // now just its displayed status, not a placement.
+      // to the target folder's taskIds. columnId is remapped (preserving
+      // status by name) to the target folder's owner board — a no-op when
+      // filing within the same owner, but necessary when the folder lives on
+      // a different board (e.g. filing a Home task into a project's folder),
+      // since a stale columnId from the old owner wouldn't resolve to any
+      // column in the new owner's selectOwnerColumns.
       fileTaskInFolder: (cardId, folderId, toIndex) => {
         set((state) => {
           const card = state.cards[cardId]
           const targetFolder = state.folders[folderId]
           if (!card || !targetFolder) return state
+          const remap = remapCardOwner(state, card, targetFolder.ownerType, targetFolder.ownerId)
+          if (!remap) return state
 
           const columns = { ...state.columns }
           const currentColumn = columns[card.columnId]
@@ -559,7 +589,10 @@ export const useBoardStore = create<BoardState>()(
           return {
             columns,
             folders,
-            cards: { ...state.cards, [cardId]: { ...card, folderId, updatedAt: Date.now() } },
+            cards: {
+              ...state.cards,
+              [cardId]: { ...card, folderId, projectId: remap.projectId, columnId: remap.columnId, updatedAt: Date.now() },
+            },
           }
         })
       },
@@ -586,6 +619,45 @@ export const useBoardStore = create<BoardState>()(
             folders,
             columns: { ...state.columns, [toColumnId]: { ...toColumn, cardOrder: order } },
             cards: { ...state.cards, [cardId]: { ...card, folderId: undefined, columnId: toColumnId, updatedAt: Date.now() } },
+          }
+        })
+      },
+
+      // Attaches (or reattaches) a task directly to a project's board, or
+      // sends it back to Home when projectId is undefined — unfiling it from
+      // any folder in the process. Status is preserved via remapCardOwner,
+      // same as fileTaskInFolder.
+      moveTaskToProject: (cardId, projectId) => {
+        set((state) => {
+          const card = state.cards[cardId]
+          if (!card) return state
+          if (projectId && !state.projects[projectId]) return state
+          const targetOwnerType: ColumnOwnerType = projectId ? 'project' : 'home'
+          const remap = remapCardOwner(state, card, targetOwnerType, projectId)
+          if (!remap) return state
+
+          const columns = { ...state.columns }
+          const currentColumn = columns[card.columnId]
+          if (currentColumn?.cardOrder.includes(cardId)) {
+            columns[card.columnId] = { ...currentColumn, cardOrder: currentColumn.cardOrder.filter((id) => id !== cardId) }
+          }
+
+          const folders = { ...state.folders }
+          if (card.folderId && folders[card.folderId]) {
+            const prev = folders[card.folderId]
+            folders[card.folderId] = { ...prev, taskIds: prev.taskIds.filter((id) => id !== cardId) }
+          }
+
+          const toColumn = columns[remap.columnId]
+          columns[remap.columnId] = { ...toColumn, cardOrder: [...toColumn.cardOrder, cardId] }
+
+          return {
+            columns,
+            folders,
+            cards: {
+              ...state.cards,
+              [cardId]: { ...card, projectId: remap.projectId, folderId: undefined, columnId: remap.columnId, updatedAt: Date.now() },
+            },
           }
         })
       },

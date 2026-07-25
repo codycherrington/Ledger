@@ -47,11 +47,12 @@ interface BoardShellProps {
 // (a column, a folder-drop zone, or another item that itself lives in one of
 // those) into a single DropTarget so the handlers below don't need to
 // special-case each shape.
-type DropTarget = { kind: 'column'; columnId: string } | { kind: 'folder'; folderId: string }
+type DropTarget = { kind: 'column'; columnId: string } | { kind: 'folder'; folderId: string } | { kind: 'project'; projectId: string }
 
 function resolveDropTarget(overId: string, overData: Record<string, unknown> | undefined): DropTarget | null {
   if (overData?.type === 'column') return { kind: 'column', columnId: overId }
   if (overData?.type === 'folder') return { kind: 'folder', folderId: overData.folderId as string }
+  if (overData?.type === 'project') return { kind: 'project', projectId: overData.projectId as string }
   if (overData?.type === 'item') {
     if (overData.folderId) return { kind: 'folder', folderId: overData.folderId as string }
     if (overData.columnId) return { kind: 'column', columnId: overData.columnId as string }
@@ -59,7 +60,10 @@ function resolveDropTarget(overId: string, overData: Record<string, unknown> | u
   return null
 }
 
-function resolveActiveLocation(active: Active): DropTarget | null {
+// An item being dragged only ever currently sits in a column or a folder
+// (never "in" a project the way a task can be filed in a folder), so this is
+// narrower than the full DropTarget union that a drop *target* can be.
+function resolveActiveLocation(active: Active): Exclude<DropTarget, { kind: 'project' }> | null {
   const data = active.data.current
   if (data?.folderId) return { kind: 'folder', folderId: data.folderId as string }
   if (data?.columnId) return { kind: 'column', columnId: data.columnId as string }
@@ -76,11 +80,16 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const reorderItemsInColumn = useBoardStore((s) => s.reorderItemsInColumn)
   const fileTaskInFolder = useBoardStore((s) => s.fileTaskInFolder)
   const unfileTaskFromFolder = useBoardStore((s) => s.unfileTaskFromFolder)
+  const moveTaskToProject = useBoardStore((s) => s.moveTaskToProject)
   const reorderFolderTasks = useBoardStore((s) => s.reorderFolderTasks)
   const setCardStatus = useBoardStore((s) => s.setCardStatus)
   const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
   const [openCardId, setOpenCardId] = useState<string | null>(null)
+  // Whether the currently-open card dialog should start in edit mode — true
+  // only right after GlobalAddButton creates a brand-new task, so the user
+  // doesn't have to hit "Edit" to type over the seeded "New Task" title.
+  const [openCardStartInEdit, setOpenCardStartInEdit] = useState(false)
   const [activeItem, setActiveItem] = useState<BoardItem | null>(null)
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>([])
@@ -95,6 +104,16 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
   const setView = useViewModeStore((s) => s.setView)
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }))
+
+  function openCard(id: string) {
+    setOpenCardId(id)
+    setOpenCardStartInEdit(false)
+  }
+
+  function openNewCard(id: string) {
+    setOpenCardId(id)
+    setOpenCardStartInEdit(true)
+  }
 
   const derivedState = { columns: columnsById, projects, folders, cards }
 
@@ -160,6 +179,10 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
       if (item?.kind !== 'task') return
       const folder = state.folders[target.folderId]
       fileTaskInFolder(activeId, target.folderId, folder ? folder.taskIds.length : 0)
+    } else if (target.kind === 'project') {
+      const item = resolveItem(state, activeId)
+      if (item?.kind !== 'task') return
+      moveTaskToProject(activeId, target.projectId)
     } else {
       const toColumn = state.columns[target.columnId]
       if (!toColumn) return
@@ -192,6 +215,10 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
       const newIndex = folder.taskIds.indexOf(overId)
       if (oldIndex === -1 || newIndex === -1 || oldIndex === newIndex) return
       reorderFolderTasks(folder.id, arrayMove(folder.taskIds, oldIndex, newIndex))
+    } else if (target.kind === 'project') {
+      // Placement already happened in handleDragOver; a project has no
+      // ordering concept the way a folder's taskIds or a column's cardOrder do.
+      return
     } else {
       const column = state.columns[target.columnId]
       if (!column || !column.cardOrder.includes(activeId)) return
@@ -268,14 +295,14 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
       {view === 'table' ? (
         <>
           <div className="flex justify-start px-5 pt-4">
-            <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="labeled" />
+            <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="labeled" onOpenCard={openNewCard} />
           </div>
           <TableView
             items={allItems.filter(matchesFilters)}
             columns={columns}
             showTypeColumn
             folderTaskFilter={taskMatchesFilters}
-            onOpenCard={setOpenCardId}
+            onOpenCard={openCard}
             onMoveItem={(itemId, columnId) => {
               const item = resolveItem(useBoardStore.getState(), itemId)
               // A filed task isn't in any column's cardOrder, so a real move
@@ -307,13 +334,26 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
                 .map((item) => item.card)
               let headerAction = null
               if (column.name === 'To Do') {
-                headerAction = <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="compact" />
+                headerAction = (
+                  <GlobalAddButton ownerType={ownerType} ownerId={ownerId} columns={columns} variant="compact" onOpenCard={openNewCard} />
+                )
               } else if (column.name === 'In Progress' && claudeCodeReady) {
+                // Also pull in tasks filed inside this owner's folders whose
+                // own status is this column — a folder's own placement still
+                // doesn't count (see comment above), but an individual filed
+                // task genuinely in progress shouldn't be invisible to
+                // Launch All just because it's tucked inside a folder.
+                const folderTaskCards = Object.values(folders)
+                  .filter((f) => f.ownerType === ownerType && f.ownerId === ownerId)
+                  .flatMap((f) => f.taskIds)
+                  .map((id) => cards[id])
+                  .filter((c): c is CardType => Boolean(c) && c.columnId === column.id && taskMatchesFilters(c))
+                const allTaskCards = [...taskCards, ...folderTaskCards]
                 headerAction = (
                   <button
                     type="button"
-                    onClick={() => project?.repoPath && taskCards.length > 0 && startClaudeCode(project.repoPath, buildTaskPrompt(taskCards))}
-                    disabled={taskCards.length === 0}
+                    onClick={() => project?.repoPath && allTaskCards.length > 0 && startClaudeCode(project.repoPath, buildTaskPrompt(allTaskCards))}
+                    disabled={allTaskCards.length === 0}
                     title="Launch all tasks in this column in Claude Code"
                     className="shrink-0 rounded-md bg-indigo-500 px-2 py-1 text-[11px] font-medium text-white transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:bg-white/[0.06] disabled:text-slate-500 disabled:hover:bg-white/[0.06]"
                   >
@@ -338,7 +378,7 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
                   key={column.id}
                   column={column}
                   items={columnItems}
-                  onOpenCard={setOpenCardId}
+                  onOpenCard={openCard}
                   headerAction={headerAction}
                   collapsed={column.name === 'Done' && doneCollapsed}
                 />
@@ -351,7 +391,7 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
                   key={stashColumn.id}
                   column={stashColumn}
                   items={itemsForColumn(stashColumn.id).filter(matchesFilters)}
-                  onOpenCard={setOpenCardId}
+                  onOpenCard={openCard}
                 />
               </>
             )}
@@ -394,7 +434,13 @@ export default function BoardShell({ ownerType, ownerId, title, onBack, showTabl
         </div>
       )}
 
-      {openCardId && <CardDetailDialog cardId={openCardId} onClose={() => setOpenCardId(null)} />}
+      {openCardId && (
+        <CardDetailDialog
+          cardId={openCardId}
+          onClose={() => setOpenCardId(null)}
+          startInEditMode={openCardStartInEdit}
+        />
+      )}
     </div>
   )
 }
