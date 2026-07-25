@@ -47,6 +47,9 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
   const startClaudeCode = useBoardStore((s) => s.startClaudeCode)
 
   const [openCardId, setOpenCardId] = useState<string | null>(null)
+  // Whether the currently-open card dialog should start in edit mode — true
+  // only right after GlobalAddButton creates a brand-new task.
+  const [openCardStartInEdit, setOpenCardStartInEdit] = useState(false)
   const [activeCard, setActiveCard] = useState<Card | null>(null)
   const [search, setSearch] = useState('')
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>([])
@@ -72,6 +75,16 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
 
   function tasksForColumn(columnId: string): Card[] {
     return folder.taskIds.map((id) => cards[id]).filter((c): c is Card => Boolean(c) && c.columnId === columnId)
+  }
+
+  function openCard(id: string) {
+    setOpenCardId(id)
+    setOpenCardStartInEdit(false)
+  }
+
+  function openNewCard(id: string) {
+    setOpenCardId(id)
+    setOpenCardStartInEdit(true)
   }
 
   function handleDragStart(event: DragStartEvent) {
@@ -155,13 +168,20 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
       {view === 'table' ? (
         <>
           <div className="flex justify-start px-5 pt-4">
-            <GlobalAddButton folderId={folder.id} ownerType={folder.ownerType} ownerId={folder.ownerId} columns={columns} variant="labeled" />
+            <GlobalAddButton
+              folderId={folder.id}
+              ownerType={folder.ownerType}
+              ownerId={folder.ownerId}
+              columns={columns}
+              variant="labeled"
+              onOpenCard={openNewCard}
+            />
           </div>
           <TableView
             items={allTasks.filter(matchesFilters).map((card): BoardItem => ({ kind: 'task', card }))}
             columns={columns}
             showTypeColumn
-            onOpenCard={setOpenCardId}
+            onOpenCard={openCard}
             onMoveItem={(itemId, columnId) => setCardStatus(itemId, columnId)}
           />
         </>
@@ -179,7 +199,14 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
               let headerAction = null
               if (column.name === 'To Do') {
                 headerAction = (
-                  <GlobalAddButton folderId={folder.id} ownerType={folder.ownerType} ownerId={folder.ownerId} columns={columns} variant="compact" />
+                  <GlobalAddButton
+                    folderId={folder.id}
+                    ownerType={folder.ownerType}
+                    ownerId={folder.ownerId}
+                    columns={columns}
+                    variant="compact"
+                    onOpenCard={openNewCard}
+                  />
                 )
               } else if (column.name === 'In Progress' && claudeCodeReady) {
                 headerAction = (
@@ -211,7 +238,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                   key={column.id}
                   column={column}
                   items={taskCards.map((card): BoardItem => ({ kind: 'task', card }))}
-                  onOpenCard={setOpenCardId}
+                  onOpenCard={openCard}
                   headerAction={headerAction}
                   collapsed={column.name === 'Done' && doneCollapsed}
                 />
@@ -226,7 +253,7 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
                   items={tasksForColumn(stashColumn.id)
                     .filter(matchesFilters)
                     .map((card): BoardItem => ({ kind: 'task', card }))}
-                  onOpenCard={setOpenCardId}
+                  onOpenCard={openCard}
                 />
               </>
             )}
@@ -241,7 +268,13 @@ export default function FolderBoardShell({ folder, onBack }: FolderBoardShellPro
         </DndContext>
       )}
 
-      {openCardId && <CardDetailDialog cardId={openCardId} onClose={() => setOpenCardId(null)} />}
+      {openCardId && (
+        <CardDetailDialog
+          cardId={openCardId}
+          onClose={() => setOpenCardId(null)}
+          startInEditMode={openCardStartInEdit}
+        />
+      )}
     </div>
   )
 }

@@ -8,9 +8,12 @@ import { useBoardStore } from '../store/board'
 interface ProjectDetailDialogProps {
   projectId: string
   onClose: () => void
+  // Opens straight into edit mode — used right after creating a project from
+  // GlobalAddButton, so the user can immediately type over the seeded name.
+  startInEditMode?: boolean
 }
 
-export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetailDialogProps) {
+export default function ProjectDetailDialog({ projectId, onClose, startInEditMode }: ProjectDetailDialogProps) {
   const project = useBoardStore((s) => s.projects[projectId])
   const updateProject = useBoardStore((s) => s.updateProject)
   const deleteProject = useBoardStore((s) => s.deleteProject)
@@ -29,7 +32,8 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
   useEffect(() => {
     setName(project?.name ?? '')
     setDescription(project?.description ?? '')
-    setMode('view')
+    setMode(startInEditMode ? 'edit' : 'view')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project?.id, project?.name, project?.description])
 
   if (!project) return null
@@ -66,19 +70,17 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
       title={project.name}
       size="lg"
       hideVisualTitle
+      headerAction={
+        mode === 'view' && (
+          <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
+            Edit
+          </button>
+        )
+      }
       footer={
         <div className="flex items-center justify-between">
           {mode === 'view' ? (
-            <button type="button" onClick={() => setMode('edit')} className="btn-ghost">
-              Edit
-            </button>
-          ) : (
-            <button type="button" onClick={handleSave} className="btn-primary">
-              Save
-            </button>
-          )}
-          <div className="flex items-center gap-2">
-            {mode === 'view' && canStartClaude && (
+            canStartClaude ? (
               <button
                 type="button"
                 onClick={() => void openClaudeCodeHere(project.repoPath!)}
@@ -86,22 +88,30 @@ export default function ProjectDetailDialog({ projectId, onClose }: ProjectDetai
               >
                 Start with Claude Code
               </button>
-            )}
-            {mode === 'view' ? (
-              <button type="button" onClick={onClose} className="btn-primary">
-                Done
-              </button>
             ) : (
-              <button type="button" onClick={handleDelete} className="btn-danger">
-                Delete
-              </button>
-            )}
-          </div>
+              <span />
+            )
+          ) : (
+            <button type="button" onClick={handleDelete} className="btn-danger">
+              Delete
+            </button>
+          )}
+          {mode === 'view' ? (
+            <button type="button" onClick={onClose} className="btn-primary">
+              Done
+            </button>
+          ) : (
+            <button type="button" onClick={handleSave} className="btn-primary">
+              Save
+            </button>
+          )}
         </div>
       }
     >
       {mode === 'edit' ? (
         <input
+          autoFocus
+          onFocus={(e) => e.target.select()}
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={commitName}
